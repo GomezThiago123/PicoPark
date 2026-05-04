@@ -3,26 +3,29 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
-import { BarCodeScanner } from 'expo-barcode-scanner';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 interface Props {
   onConnect: (address: string) => void;
 }
 
 export default function ConnectionScreen({ onConnect }: Props) {
-  const [ip, setIp]           = useState('');
+  const [ip, setIp]             = useState('');
   const [scanning, setScanning] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
-  const requestScan = async () => {
-    const { status } = await BarCodeScanner.requestPermissionsAsync();
-    if (status === 'granted') {
-      setScanning(true);
-    } else {
-      Alert.alert('Permiso denegado', 'Necesitás dar permiso a la cámara para escanear el QR.');
+  const handleScanPress = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permiso denegado', 'Necesitás dar permiso a la cámara para escanear el QR.');
+        return;
+      }
     }
+    setScanning(true);
   };
 
-  const handleScan = ({ data }: { data: string }) => {
+  const handleBarCode = ({ data }: { data: string }) => {
     setScanning(false);
     onConnect(data.trim());
   };
@@ -36,9 +39,10 @@ export default function ConnectionScreen({ onConnect }: Props) {
   if (scanning) {
     return (
       <View style={styles.scannerContainer}>
-        <BarCodeScanner
-          onBarCodeScanned={handleScan}
+        <CameraView
           style={StyleSheet.absoluteFillObject}
+          onBarcodeScanned={handleBarCode}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         />
         <View style={styles.scanOverlay}>
           <View style={styles.scanFrame} />
@@ -75,7 +79,7 @@ export default function ConnectionScreen({ onConnect }: Props) {
         <Text style={styles.btnText}>CONECTAR</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={requestScan}>
+      <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={handleScanPress}>
         <Text style={styles.btnText}>ESCANEAR QR</Text>
       </TouchableOpacity>
 
@@ -140,7 +144,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  // QR Scanner
   scannerContainer: { flex: 1, backgroundColor: 'black' },
   scanOverlay: {
     ...StyleSheet.absoluteFillObject,

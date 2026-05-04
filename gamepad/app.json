@@ -16,9 +16,8 @@
       "package": "com.picopark.gamepad"
     },
     "plugins": [
-      "expo-keep-awake",
       [
-        "expo-barcode-scanner",
+        "expo-camera",
         {
           "cameraPermission": "La app necesita la cámara para escanear el código QR del juego."
         }
