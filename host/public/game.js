@@ -1,0 +1,310 @@
+const socket = io();
+socket.emit('joinAsHost');
+
+const canvas  = document.getElementById('gameCanvas');
+const ctx     = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+
+let levelData    = null;
+let currentState = null;
+let serverInfo   = null;
+let qrImage      = null;
+let flashMsg     = null;
+let flashTimer   = 0;
+let playerCount  = 0;
+
+// ─── Eventos de red ────────────────────────────────────────────────────────
+
+socket.on('serverInfo', async (info) => {
+  serverInfo = info;
+  try {
+    const res  = await fetch('/qr');
+    const data = await res.json();
+    const img  = new Image();
+    img.src    = data.qr;
+    img.onload = () => { qrImage = img; };
+  } catch (_) {}
+});
+
+socket.on('levelData', (data) => {
+  levelData = data;
+  canvas.width  = data.width;
+  canvas.height = data.height;
+});
+
+socket.on('playerCount', ({ count }) => { playerCount = count; });
+
+socket.on('gameState', (state) => {
+  currentState = state;
+  playerCount  = Object.keys(state.players).length;
+});
+
+socket.on('playerJoined', ({ name, count }) => {
+  playerCount = count;
+  flash(`${name} se unió (${count}/4)`, 2500);
+});
+
+socket.on('playerLeft', ({ count }) => {
+  playerCount = count;
+  flash(`Jugador desconectado (${count}/4)`, 2500);
+});
+
+socket.on('keyCollected', ({ playerName }) => {
+  flash(`¡${playerName} recogió la llave!`, 2000);
+});
+
+socket.on('levelComplete', ({ level }) => {
+  const isLast = level >= 2;
+  document.getElementById('overlayTitle').textContent    = `¡Nivel ${level} completado!`;
+  document.getElementById('overlaySubtitle').textContent = isLast
+    ? '¡Completaron el juego! Gracias por jugar.'
+    : 'Todos los jugadores llegaron a la salida';
+  const btn = document.getElementById('overlayBtn');
+  if (isLast) {
+    btn.textContent = '¡Ganaron! 🎉';
+    btn.onclick     = () => { overlay.style.display = 'none'; };
+  } else {
+    btn.textContent = 'Siguiente Nivel →';
+    btn.onclick     = () => { socket.emit('nextLevel'); overlay.style.display = 'none'; };
+  }
+  overlay.style.display = 'block';
+});
+
+socket.on('levelStart', ({ level }) => {
+  flash(`Nivel ${level}`, 2000);
+});
+
+socket.on('gameOver', () => {
+  document.getElementById('overlayTitle').textContent    = '¡Ganaron!';
+  document.getElementById('overlaySubtitle').textContent = 'Completaron todos los niveles';
+  document.getElementById('overlayBtn').textContent      = '¡Felicidades! 🎉';
+  document.getElementById('overlayBtn').onclick          = () => { overlay.style.display = 'none'; };
+  overlay.style.display = 'block';
+});
+
+function flash(text, duration = 2000) {
+  flashMsg   = text;
+  flashTimer = duration;
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────
+
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, '#0d0d2b');
+  grad.addColorStop(1, '#1a1a3e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawPlatforms() {
+  if (!levelData) return;
+  for (const p of levelData.platforms) {
+    // Sombra
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(p.x - p.w / 2 + 3, p.y - p.h / 2 + 3, p.w, p.h);
+    // Plataforma
+    ctx.fillStyle = '#4a5568';
+    ctx.fillRect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h);
+    // Borde superior
+    ctx.fillStyle = '#718096';
+    ctx.fillRect(p.x - p.w / 2, p.y - p.h / 2, p.w, 4);
+  }
+}
+
+function drawKey(key) {
+  if (!key || key.collected) return;
+  const { x, y } = key;
+  ctx.save();
+  // Brillo animado
+  const glow = ctx.createRadialGradient(x, y, 2, x, y, 20);
+  glow.addColorStop(0, 'rgba(255,215,0,0.4)');
+  glow.addColorStop(1, 'rgba(255,215,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(x, y, 20, 0, Math.PI * 2);
+  ctx.fill();
+  // Círculo de la llave
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.arc(x, y, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#B8860B';
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#B8860B';
+  ctx.stroke();
+  // Agujero
+  ctx.fillStyle = '#0d0d2b';
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  // Mango
+  ctx.fillStyle = '#FFD700';
+  ctx.fillRect(x + 7, y - 3, 18, 6);
+  ctx.fillRect(x + 18, y + 3, 5, 5);
+  ctx.fillRect(x + 11, y + 3, 5, 5);
+  ctx.restore();
+}
+
+function drawDoor(door, keyCollected) {
+  if (!door) return;
+  const { x, y } = door;
+  ctx.save();
+  // Marco
+  ctx.fillStyle = keyCollected ? '#1a6b3a' : '#4a4a4a';
+  ctx.fillRect(x - 22, y - 44, 44, 66);
+  // Interior
+  ctx.fillStyle = keyCollected ? '#27ae60' : '#666';
+  ctx.fillRect(x - 18, y - 40, 36, 60);
+  // Cerradura
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.arc(x + 10, y - 12, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(x + 7, y - 12, 6, 8);
+  // Label
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(keyCollected ? 'SALIDA' : 'SALIDA', x, y + 30);
+  ctx.restore();
+}
+
+function drawPlayer(p) {
+  const { x, y, color, name, atDoor } = p;
+  ctx.save();
+  // Sombra
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(x - 14, y + 18, 28, 6);
+  // Cuerpo
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 16, y - 20, 32, 40);
+  // Borde superior claro
+  ctx.fillStyle = lighten(color);
+  ctx.fillRect(x - 16, y - 20, 32, 4);
+  // Ojos
+  ctx.fillStyle = 'white';
+  ctx.fillRect(x - 10, y - 13, 8, 8);
+  ctx.fillRect(x + 2,  y - 13, 8, 8);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(x - 7,  y - 11, 4, 4);
+  ctx.fillRect(x + 5,  y - 11, 4, 4);
+  // Nombre
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur  = 3;
+  ctx.fillText(name, x, y - 26);
+  ctx.shadowBlur = 0;
+  // Checkmark al llegar a la puerta
+  if (atDoor) {
+    ctx.fillStyle = '#2ecc71';
+    ctx.font = '18px monospace';
+    ctx.fillText('✓', x, y - 38);
+  }
+  ctx.restore();
+}
+
+function lighten(hex) {
+  const r = Math.min(255, parseInt(hex.slice(1,3), 16) + 60);
+  const g = Math.min(255, parseInt(hex.slice(3,5), 16) + 60);
+  const b = Math.min(255, parseInt(hex.slice(5,7), 16) + 60);
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawHUD(state) {
+  const pList = Object.values(state.players);
+  const atDoor = pList.filter(p => p.atDoor).length;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(10, 10, 240, 32);
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText(`Nivel ${state.level}  |  Jugadores: ${pList.length}/4`, 20, 31);
+  if (state.key.collected) {
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(10, 48, 210, 28);
+    ctx.fillStyle = '#FFD700';
+    ctx.fillText(`En salida: ${atDoor}/4`, 20, 67);
+  }
+  ctx.restore();
+}
+
+function drawQR() {
+  if (!serverInfo) return;
+  const W = canvas.width, H = canvas.height;
+  ctx.save();
+  if (qrImage) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(W - 162, H - 162, 152, 152);
+    ctx.drawImage(qrImage, W - 157, H - 157, 142, 142);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${serverInfo.ip}:${serverInfo.port}`, W - 8, H - 6);
+  ctx.restore();
+}
+
+function drawFlash() {
+  if (!flashMsg || flashTimer <= 0) return;
+  const W = canvas.width;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.8)';
+  ctx.fillRect(W / 2 - 180, 55, 360, 40);
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 17px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(flashMsg, W / 2, 81);
+  ctx.restore();
+}
+
+function drawWaiting() {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  for (let i = 0; i < W; i += 60) ctx.fillRect(i, 0, 1, H);
+  for (let j = 0; j < H; j += 60) ctx.fillRect(0, j, W, 1);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(W / 2 - 280, H / 2 - 80, 560, 160);
+  ctx.strokeStyle = '#FFD700';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(W / 2 - 280, H / 2 - 80, 560, 160);
+
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 38px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PICO PARK', W / 2, H / 2 - 20);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '16px monospace';
+  ctx.fillText(`Esperando jugadores... (${playerCount}/4)`, W / 2, H / 2 + 20);
+  ctx.fillText('Escanea el QR con el gamepad para unirte', W / 2, H / 2 + 46);
+}
+
+let lastTime = 0;
+function loop(ts) {
+  const dt = ts - lastTime;
+  lastTime = ts;
+  if (flashTimer > 0) flashTimer -= dt;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBackground();
+
+  if (!currentState || Object.keys(currentState.players).length === 0) {
+    drawWaiting();
+  } else {
+    drawPlatforms();
+    drawDoor(currentState.door, currentState.key.collected);
+    drawKey(currentState.key);
+    for (const p of Object.values(currentState.players)) drawPlayer(p);
+    drawHUD(currentState);
+  }
+
+  drawQR();
+  drawFlash();
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
