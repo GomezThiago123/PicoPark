@@ -1,108 +1,106 @@
 # Pico Park — WebSockets
 
-Juego cooperativo multijugador con servidor Node.js y app móvil React Native.
+Juego cooperativo multijugador inspirado en Pico Park. Servidor Node.js con motor de físicas y app móvil React Native como control inalámbrico.
 
 ## Estructura
 
 ```
 PicoPark/
-├── host/        # Servidor del juego (Node.js + socket.io + Matter.js)
-└── gamepad/     # App móvil del control (React Native + Expo)
+├── host/        # Servidor + juego visual (Node.js + socket.io + Matter.js)
+└── gamepad/     # App móvil del control (React Native + Expo SDK 55)
 ```
-
----
-
-## Host (PC)
-
-### Instalación
-
-```bash
-cd host
-npm install
-```
-
-### Iniciar
-
-```bash
-npm start
-# o en desarrollo con auto-reload:
-npm run dev
-```
-
-Abrí el navegador en `http://localhost:3000`.
-La IP de la LAN aparece en la consola (ej. `192.168.1.15:3000`).
-
-### Stack
-- **Express** — servidor HTTP + archivos estáticos
-- **Socket.io** — WebSockets bidireccionales (broadcast de estado, recepción de inputs)
-- **Matter.js** — motor de físicas (gravedad, colisiones, apilar jugadores)
-- **QRCode** — genera el QR para emparejar el gamepad
-
----
-
-## Gamepad (Móvil)
-
-### Instalación
-
-```bash
-cd gamepad
-npm install
-```
-
-### Correr en modo desarrollo
-
-```bash
-npm start
-# Luego escanear el QR con Expo Go (Android/iOS)
-```
-
-### Compilar APK (Android)
-
-```bash
-# Requiere cuenta en expo.dev y EAS CLI instalado
-npm install -g eas-cli
-eas login
-eas build --platform android --profile preview
-```
-
-### Stack
-- **Expo** (SDK 51) — toolchain React Native
-- **socket.io-client** — conexión WebSocket al servidor
-- **expo-barcode-scanner** — escanear QR para conectarse
-- **expo-keep-awake** — evita que la pantalla se bloquee
 
 ---
 
 ## Cómo jugar
 
 1. Iniciar el servidor: `cd host && npm start`
-2. Abrir `http://localhost:3000` en la PC (pantalla del juego)
+2. Abrir `http://localhost:3000` en la PC — aparece la pantalla de **lobby** con un QR
 3. Los jugadores abren la app en el celular → ingresan la IP o escanean el QR
-4. Una vez conectados los 4 jugadores, la partida comienza automáticamente
+4. El host hace click en **INICIAR JUEGO** → el QR desaparece y empieza la partida
 
-### Controles
-- **◄ ►** — moverse
-- **A** — saltar (también se puede saltar encima de otros jugadores en el Nivel 2)
+### Controles del gamepad
+| Botón | Acción |
+|-------|--------|
+| ◄ ►  | Moverse izquierda / derecha |
+| **A** | Saltar (también sobre otros jugadores) |
 
 ### Niveles
-| Nivel | Objetivo |
-|-------|----------|
-| 1 | Llegar a la llave y luego todos a la puerta |
-| 2 | Apilarse para alcanzar la plataforma elevada donde está la llave |
+| Nivel | Objetivo | Cajas |
+|-------|----------|-------|
+| 1 | Uno recoge la llave, todos llegan a la puerta | 2 cajas empujables |
+| 2 | Apilarse encima de otros jugadores para la plataforma elevada | 3 cajas empujables |
 
 ---
 
-## Arquitectura de red
+## Mecánicas implementadas
 
+- **Cajas empujables:** objetos dinámicos que responden a la física. Dos jugadores empujando desde el mismo lado las mueven más rápido (suma de fuerzas).
+- **Apilamiento:** los jugadores pueden pararse encima de otros para formar torres.
+- **Colisión entre jugadores:** no se atraviesan de costado ni se empujan.
+- **Respawn de llave:** si el portador cae al vacío, la llave reaparece en su posición original.
+- **Condición de victoria:** la puerta no se abre sin la llave y el nivel no termina hasta que los 4 jugadores estén en la salida.
+- **Wake Lock:** la pantalla del celular no se apaga durante el juego.
+
+---
+
+## Host (PC)
+
+### Instalación y uso
+```bash
+cd host
+npm install
+npm start
+# Abrí http://localhost:3000
+```
+
+### Stack técnico
+- **Express** — servidor HTTP y archivos estáticos
+- **Socket.io** — WebSockets bidireccionales (broadcast a 60 FPS)
+- **Matter.js** — motor de físicas (gravedad, colisiones, cajas, apilamiento)
+- **QRCode** — genera el QR para emparejar gamepads
+- **Canvas 2D** — renderer del juego con personajes pixel-art (gatos)
+
+### Arquitectura de red
 ```
 Celular (Gamepad)                     PC (Host)
      │                                    │
      │  emit('input', {key, pressed})     │
      │ ─────────────────────────────────► │
-     │                                    │  Motor de físicas (30 FPS)
-     │  emit('gameState', {...})          │
+     │                                    │  Game loop 60 FPS
+     │  emit('gameState', {...})          │  Matter.js physics
      │ ◄───────────────────────────────── │
-     │                                    │
 ```
 
-Cada 33ms el servidor corre un tick del motor de físicas y transmite el estado completo a todos los clientes conectados.
+---
+
+## Gamepad (Móvil)
+
+### Instalación y uso
+```bash
+cd gamepad
+bun install       # o npm install --legacy-peer-deps
+bun start         # escanear el QR con Expo Go
+```
+
+### Compilar APK (Android)
+```bash
+npm install -g eas-cli
+eas login
+eas build --platform android --profile preview
+```
+
+### Stack técnico
+- **Expo SDK 55** — React Native 0.83, React 19
+- **socket.io-client** — conexión WebSocket al servidor
+- **expo-camera** — escanear QR para conectarse
+- **expo-keep-awake** — wake lock de pantalla
+- Control multi-touch con zona única (DPad + salto simultáneos sin conflicto)
+
+---
+
+## Requisitos
+- Node.js 18+
+- Bun (recomendado) o npm
+- Expo Go en el celular — [expo.dev/go](https://expo.dev/go)
+- PC y celulares en la **misma red WiFi**

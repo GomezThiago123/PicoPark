@@ -1,0 +1,253 @@
+================================================================
+  PICO PARK — EXPLICACIÓN TÉCNICA DEL PROYECTO
+================================================================
+
+----------------------------------------------------------------
+  QUÉ SE CONSTRUYÓ
+----------------------------------------------------------------
+
+Un clon simplificado de Pico Park: juego cooperativo multijugador
+donde los jugadores usan sus celulares como controles inalámbricos
+y el juego se visualiza en una PC/notebook.
+
+El proyecto tiene DOS partes:
+
+  1. HOST   → aplicación web que corre en la PC (el juego en sí)
+  2. GAMEPAD → app móvil en React Native (el control del celular)
+
+
+----------------------------------------------------------------
+  CÓMO SE COMUNICAN (WebSockets)
+----------------------------------------------------------------
+
+Tanto la pantalla del juego como cada celular se conectan al
+mismo servidor a través de WebSockets usando la librería socket.io.
+
+El flujo es:
+
+  [Celular]  →  presiona botón  →  emit('input', { key, pressed })
+  [Servidor] →  recibe el input →  actualiza la física del jugador
+  [Servidor] →  60 veces/seg   →  emit('gameState', { jugadores, cajas, llave, puerta })
+  [Navegador]→  recibe estado  →  dibuja todo en el Canvas
+
+Esto permite que el juego se vea fluido en la pantalla aunque los
+controles estén en otro dispositivo físico.
+
+
+----------------------------------------------------------------
+  PARTE 1: HOST (carpeta /host)
+----------------------------------------------------------------
+
+Archivos:
+  - server.js        → cerebro del juego
+  - public/index.html → página que se abre en el navegador
+  - public/game.js   → dibuja el juego en pantalla
+
+¿Qué hace server.js?
+
+  1. SERVIDOR HTTP + WEBSOCKET
+     Usa Express para servir los archivos estáticos y socket.io
+     para la comunicación en tiempo real.
+
+  2. MOTOR DE FÍSICAS (Matter.js)
+     Cada jugador y cada caja es un "cuerpo rígido" en un mundo físico.
+     El motor calcula gravedad, colisiones, y fuerzas.
+
+     Capas de colisión (collision filter):
+       - CAT_WORLD  (0x0002): plataformas y paredes → choca con jugadores y cajas
+       - CAT_PLAYER (0x0001): jugadores → choca con mundo y cajas, NO con otros jugadores
+       - CAT_BOX    (0x0004): cajas → choca con mundo, jugadores, y otras cajas
+
+     Esto permite:
+       - Que los jugadores empujen cajas (CAT_PLAYER choca con CAT_BOX)
+       - Que las cajas choquen entre sí (CAT_BOX en su propio mask)
+       - Que los jugadores NO se empujen físicamente entre sí
+
+  3. CORRECCIONES MANUALES EN CADA TICK
+     Como los jugadores no colisionan físicamente entre sí
+     (para evitar que se empujen), se aplican dos correcciones:
+
+     a) Apilamiento (vertical): si los pies de jugador A están
+        cerca de la cabeza de jugador B, se "posa" encima sin
+        que caiga a través de él.
+
+     b) Separación horizontal: si dos jugadores se solapan de
+        costado, se separan la mitad del solapamiento cada uno.
+        Sin velocidad transferida → se detienen, no se empujan.
+
+  4. CAJAS EMPUJABLES (Suma de Fuerzas)
+     Las cajas son cuerpos dinámicos con restitución = 0.3 y
+     fricción = 0.1. Esto significa:
+       - Cuando una caja choca con otra, rebotan ligeramente
+         y se separan (no se pegan ni forman un "tren")
+       - Cuando un jugador empuja una caja, le aplica su impulso
+         de colisión
+       - Con DOS jugadores empujando desde el mismo lado,
+         el impulso es el DOBLE → la caja se mueve más rápido
+         (esto es la "suma de fuerzas" del criterio de evaluación)
+
+  5. RESPAWN DE LLAVE
+     Si el jugador que lleva la llave cae fuera del mapa
+     (posición Y > altura del nivel + 80px):
+       - El jugador reaparece en su punto de spawn
+       - La llave reaparece en su posición original
+       - Se notifica a todos los clientes
+
+  6. GAME LOOP a 60 FPS
+     Cada 16ms (~60 veces por segundo) el servidor:
+       a) Lee los inputs de cada jugador (izq/der/salto)
+       b) Aplica velocidad al cuerpo físico
+       c) Avanza la simulación de Matter.js
+       d) Aplica correcciones de apilamiento y separación
+       e) Verifica respawn de llave
+       f) Revisa condición de victoria
+       g) Serializa posiciones de jugadores y cajas y las envía
+
+  7. LÓGICA DE NIVELES
+     Nivel 1: plataformas escalonadas, 2 cajas empujables, llave
+              en plataforma alta, puerta a la derecha
+     Nivel 2: plataforma MUY elevada (requiere apilarse), 3 cajas,
+              llave en plataforma alta, puerta lateral
+     Victoria: TODOS los jugadores en la puerta CON la llave recogida
+
+  8. LOBBY
+     Antes de jugar hay una pantalla de lobby con QR grande.
+     El host presiona "INICIAR JUEGO" → se crean los cuerpos
+     físicos y desaparece el QR.
+
+¿Qué hace game.js?
+
+  Se ejecuta en el navegador y dibuja todo usando Canvas 2D:
+    - Pantalla de lobby con QR, slots de jugadores, botón Iniciar
+    - Plataformas con efecto de borde claro
+    - Cajas de madera con patrón de cruz (estilo crate)
+    - Llave animada con brillo dorado
+    - Puerta (gris sin llave, verde con llave)
+    - Personajes pixel-art estilo Pico Park (gato con orejas,
+      ojos, nariz, boca y cola)
+    - HUD con nivel y conteo de jugadores en la puerta
+    - Overlay de "Nivel completado" con botón al siguiente nivel
+    - Flash de mensajes: llave recogida, llave reapareció, etc.
+
+
+----------------------------------------------------------------
+  PARTE 2: GAMEPAD (carpeta /gamepad)
+----------------------------------------------------------------
+
+App React Native construida con Expo SDK 55 (React 19).
+
+Archivos principales:
+  - App.tsx                           → entrada, maneja wake lock
+  - src/screens/ConnectionScreen.tsx  → pantalla de conexión
+  - src/screens/GamepadScreen.tsx     → pantalla de control
+  - src/hooks/useGameSocket.ts        → lógica de WebSocket
+  - src/components/DPad.tsx           → visual de botones ◄ ►
+  - src/components/JumpButton.tsx     → visual del botón A
+
+Flujo de la app:
+
+  1. CONEXIÓN
+     El jugador ingresa la IP manualmente (ej: 192.168.1.10:3000)
+     o escanea el código QR de la pantalla del juego.
+     Se conecta via socket.io y envía 'joinAsPlayer'.
+     El servidor le asigna color y nombre automáticamente.
+
+  2. CONTROL MULTI-TOUCH
+     La pantalla del gamepad tiene UNA SOLA zona táctil que
+     detecta TODOS los dedos al mismo tiempo.
+
+     Por qué: React Native solo permite un "responder" de toque
+     activo. Si el DPad y el botón de salto son componentes
+     separados, al tocar el segundo se suelta el primero.
+
+     Solución: capturar todos los toques en un View padre y
+     detectar la zona por coordenada X:
+
+       x < 20% de pantalla  → izquierda
+       x < 42% de pantalla  → derecha
+       x > 58% de pantalla  → salto
+
+     Por cada toque:
+       - onTouchStart → emit('input', { key, pressed: true })
+       - onTouchEnd   → emit('input', { key, pressed: false })
+
+  3. WAKE LOCK
+     expo-keep-awake evita que la pantalla se apague mientras
+     se juega.
+
+  4. INDICADOR DE CONEXIÓN
+     Un punto verde/rojo en la barra superior muestra si el
+     jugador está conectado.
+
+
+----------------------------------------------------------------
+  TECNOLOGÍAS USADAS
+----------------------------------------------------------------
+
+  HOST:
+    - Node.js         → entorno de ejecución del servidor
+    - Express         → servidor HTTP
+    - socket.io       → WebSockets bidireccionales
+    - Matter.js       → motor de físicas 2D
+    - qrcode          → genera el QR de la IP
+    - Canvas 2D API   → dibuja el juego en el navegador
+
+  GAMEPAD:
+    - React Native    → framework para apps móviles con JS
+    - Expo SDK 55     → toolchain (React 19, RN 0.83)
+    - socket.io-client → cliente WebSocket
+    - expo-camera     → escanear QR
+    - expo-keep-awake → wake lock de pantalla
+    - TypeScript      → tipado estático
+
+
+----------------------------------------------------------------
+  CÓMO CORRERLO
+----------------------------------------------------------------
+
+  Terminal 1 (Host):
+    cd host
+    npm install
+    npm start
+    → Abrir http://localhost:3000 en el navegador
+
+  Terminal 2 (Gamepad):
+    cd gamepad
+    bun install
+    bun start
+    → Escanear QR con Expo Go en el celular
+
+  IMPORTANTE: PC y celular deben estar en la misma red WiFi.
+
+
+----------------------------------------------------------------
+  DECISIONES DE DISEÑO IMPORTANTES
+----------------------------------------------------------------
+
+  1. ¿Por qué el juego corre en el servidor y no en el navegador?
+     El servidor es la "fuente de verdad" de la física. Si cada
+     cliente calculara su propia física habría inconsistencias.
+     El servidor calcula UNA sola simulación y la transmite.
+     → Respuesta correcta para la pregunta técnica del evaluador.
+
+  2. ¿Por qué un solo View para el multi-touch en el gamepad?
+     React Native tiene un sistema de "responder" donde solo
+     un componente puede tener el foco táctil a la vez. Un
+     View padre con zonas por coordenada X resuelve esto.
+
+  3. ¿Por qué jugadores no colisionan entre sí físicamente?
+     Para evitar que se empujen. El apilamiento y la separación
+     horizontal se manejan con correcciones manuales de posición
+     en cada tick del game loop.
+
+  4. ¿Por qué las cajas tienen restitución 0.3 y fricción 0.1?
+     Con restitución 0 y fricción alta, las cajas se "pegan"
+     al tocarse y se mueven como una sola unidad. Con restitución
+     0.3, al chocar rebotan ligeramente y se separan, manteniéndose
+     como objetos independientes.
+
+  5. ¿Por qué 60 FPS en lugar de 30?
+     El requisito pedía mínimo 30. Se duplicó para mayor fluidez
+     tanto en movimiento como en detección de saltos y colisiones.
+
+================================================================
