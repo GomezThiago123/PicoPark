@@ -31,7 +31,12 @@ const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12'];
 const NAMES  = ['Rojo', 'Azul', 'Verde', 'Amarillo'];
 const PW = 32, PH = 40;
 const SPEED = 3.5;
-const JUMP_FORCE = -0.013;
+const JUMP_SPEED = 8;
+const FPS = 60;
+
+// Capas de colisión: jugadores solo chocan con el mundo, no entre sí
+const CAT_WORLD  = 0x0002;
+const CAT_PLAYER = 0x0001;
 
 const LEVELS = {
   1: {
@@ -64,12 +69,20 @@ const LEVELS = {
 // Estado global
 let engine = null;
 let world  = null;
-const players    = {};  // socketId -> { body, color, name, index, inputs, atDoor }
+const players      = {};  // socketId -> { body, color, name, index, inputs, atDoor }
+const lobbyPlayers = {};  // socketId -> { color, name, index }  (antes de iniciar)
 let playerSlots  = 0;
 let keyState     = { x: 0, y: 0, collected: false, holder: null };
 let doorPos      = { x: 0, y: 0 };
 let currentLevel = 1;
-let gameStatus   = 'waiting'; // 'waiting' | 'playing' | 'complete'
+let gameStatus   = 'lobby'; // 'lobby' | 'playing' | 'complete'
+
+function emitLobby() {
+  io.emit('lobbyUpdate', {
+    players: Object.values(lobbyPlayers),
+    count:   Object.keys(lobbyPlayers).length,
+  });
+}
 
 // ─── Física ────────────────────────────────────────────────────────────────
 
@@ -79,9 +92,19 @@ function initLevel(num) {
   world  = engine.world;
 
   const lvl = LEVELS[num];
-  World.add(world, lvl.platforms.map(p =>
-    Bodies.rectangle(p.x, p.y, p.w, p.h, { isStatic: true, friction: 0.5, restitution: 0 })
-  ));
+  const worldFilter = { category: CAT_WORLD, mask: CAT_PLAYER };
+  const T = 60; // grosor de paredes invisibles
+  const walls = [
+    Bodies.rectangle(-T / 2,            lvl.height / 2, T, lvl.height, { isStatic: true, label: 'wall', collisionFilter: worldFilter }),
+    Bodies.rectangle(lvl.width + T / 2, lvl.height / 2, T, lvl.height, { isStatic: true, label: 'wall', collisionFilter: worldFilter }),
+    Bodies.rectangle(lvl.width / 2,     -T / 2,         lvl.width, T,  { isStatic: true, label: 'wall', collisionFilter: worldFilter }),
+  ];
+  World.add(world, [
+    ...lvl.platforms.map(p =>
+      Bodies.rectangle(p.x, p.y, p.w, p.h, { isStatic: true, friction: 0.5, restitution: 0, collisionFilter: worldFilter })
+    ),
+    ...walls,
+  ]);
 
   keyState  = { x: lvl.keyPos.x, y: lvl.keyPos.y, collected: false, holder: null };
   doorPos   = { x: lvl.doorPos.x, y: lvl.doorPos.y };
@@ -107,6 +130,7 @@ function makeBody(socketId, spawn) {
     restitution: 0,
     inertia: Infinity,
     inverseInertia: 0,
+    collisionFilter: { category: CAT_PLAYER, mask: CAT_WORLD },
   });
 }
 
@@ -148,7 +172,7 @@ function isOnGround(body) {
   return false;
 }
 
-// ─── Game Loop (30 FPS) ────────────────────────────────────────────────────
+// ─── Game Loop (60 FPS) ────────────────────────────────────────────────────
 
 function tick() {
   if (gameStatus !== 'playing') return;
@@ -161,15 +185,16 @@ function tick() {
     let vx = body.velocity.x;
     if (inputs.left)       vx = -SPEED;
     else if (inputs.right) vx =  SPEED;
-    else                   vx *= 0.75;
+    else                   vx *= onGround ? 0.75 : 0.97; // en el aire conserva momentum
     vx = Math.max(-SPEED, Math.min(SPEED, vx));
 
-    Body.setVelocity(body, { x: vx, y: body.velocity.y });
-
+    let vy = body.velocity.y;
     if (inputs.jump && onGround) {
-      Body.applyForce(body, body.position, { x: 0, y: JUMP_FORCE * body.mass });
+      vy = -JUMP_SPEED;
       inputs.jump = false;
     }
+
+    Body.setVelocity(body, { x: vx, y: vy });
 
     // Recoger llave
     if (!keyState.collected) {
@@ -198,7 +223,23 @@ function tick() {
     }
   }
 
-  Engine.update(engine, 1000 / 30);
+  Engine.update(engine, 1000 / FPS);
+
+  // Corrección de apilamiento: sin colisión física entre jugadores,
+  // se ajusta la posición para que puedan pararse encima sin atravesarse
+  const pArr = Object.values(players);
+  for (const pA of pArr) {
+    const aFoot = pA.body.position.y + PH / 2;
+    for (const pB of pArr) {
+      if (pA === pB) continue;
+      const bHead = pB.body.position.y - PH / 2;
+      const dx = Math.abs(pA.body.position.x - pB.body.position.x);
+      if (dx < PW - 4 && aFoot >= bHead - 8 && aFoot <= bHead + 14 && pA.body.velocity.y >= -0.5) {
+        Body.setPosition(pA.body, { x: pA.body.position.x, y: bHead - PH / 2 });
+        Body.setVelocity(pA.body, { x: pA.body.velocity.x, y: 0 });
+      }
+    }
+  }
 
   // Verificar victoria: los 4 jugadores en la puerta con la llave
   const pList = Object.values(players);
@@ -230,7 +271,7 @@ function tick() {
   io.emit('gameState', state);
 }
 
-setInterval(tick, 1000 / 30);
+setInterval(tick, 1000 / FPS);
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────
 
@@ -240,19 +281,43 @@ io.on('connection', (socket) => {
   socket.on('joinAsHost', () => {
     socket.emit('serverInfo', { ip: LOCAL_IP, port: PORT });
     socket.emit('levelData', LEVELS[currentLevel]);
-    socket.emit('playerCount', { count: Object.keys(players).length });
+    socket.emit('lobbyUpdate', { players: Object.values(lobbyPlayers), count: Object.keys(lobbyPlayers).length });
   });
 
   socket.on('joinAsPlayer', () => {
-    if (Object.keys(players).length >= 4) {
-      socket.emit('gameFull');
-      return;
+    const total = Object.keys(lobbyPlayers).length + Object.keys(players).length;
+    if (total >= 4) { socket.emit('gameFull'); return; }
+
+    if (gameStatus === 'playing') {
+      // Unirse en partida en curso
+      const p = addPlayer(socket.id);
+      socket.emit('playerAssigned', { id: socket.id, color: p.color, name: p.name, index: p.index });
+      io.emit('playerJoined', { id: socket.id, color: p.color, name: p.name, count: Object.keys(players).length });
+    } else {
+      // Lobby
+      const index = playerSlots % 4;
+      playerSlots++;
+      lobbyPlayers[socket.id] = { id: socket.id, color: COLORS[index], name: NAMES[index], index };
+      socket.emit('playerAssigned', lobbyPlayers[socket.id]);
+      emitLobby();
+      console.log(`  ${lobbyPlayers[socket.id].name} en lobby (${Object.keys(lobbyPlayers).length}/4)`);
     }
-    if (Object.keys(players).length === 0) initLevel(currentLevel);
-    const p = addPlayer(socket.id);
-    socket.emit('playerAssigned', { id: socket.id, color: p.color, name: p.name, index: p.index });
-    io.emit('playerJoined', { id: socket.id, color: p.color, name: p.name, count: Object.keys(players).length });
-    console.log(`  ${p.name} unido (${Object.keys(players).length}/4)`);
+  });
+
+  socket.on('startGame', () => {
+    if (gameStatus !== 'lobby') return;
+    initLevel(currentLevel);
+    for (const id in lobbyPlayers) {
+      const lp = lobbyPlayers[id];
+      const spawn = LEVELS[currentLevel].spawns[lp.index] || LEVELS[currentLevel].spawns[0];
+      const body  = makeBody(id, spawn);
+      World.add(world, body);
+      players[id] = { body, index: lp.index, color: lp.color, name: lp.name, inputs: { left: false, right: false, jump: false }, atDoor: false };
+    }
+    for (const id in lobbyPlayers) delete lobbyPlayers[id];
+    io.emit('levelData', LEVELS[currentLevel]);
+    io.emit('gameStarted', { level: currentLevel });
+    console.log('Juego iniciado');
   });
 
   socket.on('input', ({ key, pressed }) => {
@@ -281,7 +346,10 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('- Desconexión:', socket.id);
-    if (players[socket.id]) {
+    if (lobbyPlayers[socket.id]) {
+      delete lobbyPlayers[socket.id];
+      emitLobby();
+    } else if (players[socket.id]) {
       if (world) World.remove(world, players[socket.id].body);
       delete players[socket.id];
       io.emit('playerLeft', { id: socket.id, count: Object.keys(players).length });

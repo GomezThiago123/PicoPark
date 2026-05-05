@@ -12,6 +12,8 @@ let qrImage      = null;
 let flashMsg     = null;
 let flashTimer   = 0;
 let playerCount  = 0;
+let lobbyPlayers = [];
+let gamePhase    = 'lobby'; // 'lobby' | 'playing'
 
 // ─── Eventos de red ────────────────────────────────────────────────────────
 
@@ -33,6 +35,15 @@ socket.on('levelData', (data) => {
 });
 
 socket.on('playerCount', ({ count }) => { playerCount = count; });
+
+socket.on('lobbyUpdate', ({ players, count }) => {
+  lobbyPlayers = players;
+  playerCount  = count;
+});
+
+socket.on('gameStarted', () => {
+  gamePhase = 'playing';
+});
 
 socket.on('gameState', (state) => {
   currentState = state;
@@ -231,20 +242,65 @@ function drawHUD(state) {
   ctx.restore();
 }
 
-function drawQR() {
-  if (!serverInfo) return;
+function drawLobby() {
   const W = canvas.width, H = canvas.height;
-  ctx.save();
+  ctx.fillStyle = '#0d0d2b';
+  ctx.fillRect(0, 0, W, H);
+
+  // Título
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 44px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PICO PARK', W / 2, 60);
+
+  // QR centrado
+  const qrSize = 220;
+  const qrX = W / 2 - qrSize / 2;
+  const qrY = 90;
   if (qrImage) {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(W - 162, H - 162, 152, 152);
-    ctx.drawImage(qrImage, W - 157, H - 157, 142, 142);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
+    ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
   }
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.font = '11px monospace';
-  ctx.textAlign = 'right';
-  ctx.fillText(`${serverInfo.ip}:${serverInfo.port}`, W - 8, H - 6);
-  ctx.restore();
+  if (serverInfo) {
+    ctx.fillStyle = '#aaa';
+    ctx.font = '15px monospace';
+    ctx.fillText(`${serverInfo.ip}:${serverInfo.port}`, W / 2, qrY + qrSize + 26);
+  }
+
+  // Lista de jugadores
+  const listY = qrY + qrSize + 55;
+  ctx.font = 'bold 16px monospace';
+  ctx.fillStyle = '#888';
+  ctx.fillText('Jugadores conectados:', W / 2, listY);
+
+  const slots = [0, 1, 2, 3];
+  slots.forEach((i) => {
+    const px = W / 2 - 220 + i * 115;
+    const py = listY + 20;
+    const p  = lobbyPlayers.find(lp => lp.index === i);
+    ctx.fillStyle = p ? p.color : 'rgba(255,255,255,0.1)';
+    ctx.fillRect(px, py, 90, 50);
+    ctx.fillStyle = p ? 'white' : 'rgba(255,255,255,0.25)';
+    ctx.font = p ? 'bold 14px monospace' : '13px monospace';
+    ctx.fillText(p ? p.name : `P${i + 1}`, px + 45, py + 30);
+  });
+
+  // Botón Iniciar
+  const btnW = 220, btnH = 52;
+  const btnX = W / 2 - btnW / 2;
+  const btnY = listY + 95;
+  const canStart = lobbyPlayers.length > 0;
+  ctx.fillStyle = canStart ? '#e74c3c' : '#444';
+  ctx.beginPath();
+  ctx.roundRect(btnX, btnY, btnW, btnH, 10);
+  ctx.fill();
+  ctx.fillStyle = canStart ? 'white' : '#777';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('INICIAR JUEGO', W / 2, btnY + 34);
+
+  // Guardar zona del botón para click
+  canvas._startBtn = canStart ? { x: btnX, y: btnY, w: btnW, h: btnH } : null;
 }
 
 function drawFlash() {
@@ -290,21 +346,34 @@ function loop(ts) {
   if (flashTimer > 0) flashTimer -= dt;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawBackground();
 
-  if (!currentState || Object.keys(currentState.players).length === 0) {
-    drawWaiting();
+  if (gamePhase === 'lobby') {
+    drawLobby();
   } else {
-    drawPlatforms();
-    drawDoor(currentState.door, currentState.key.collected);
-    drawKey(currentState.key);
-    for (const p of Object.values(currentState.players)) drawPlayer(p);
-    drawHUD(currentState);
+    drawBackground();
+    if (!currentState) {
+      drawWaiting();
+    } else {
+      drawPlatforms();
+      drawDoor(currentState.door, currentState.key.collected);
+      drawKey(currentState.key);
+      for (const p of Object.values(currentState.players)) drawPlayer(p);
+      drawHUD(currentState);
+    }
+    drawFlash();
   }
-
-  drawQR();
-  drawFlash();
   requestAnimationFrame(loop);
 }
+
+canvas.addEventListener('click', (e) => {
+  if (gamePhase !== 'lobby') return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left)  * (canvas.width  / rect.width);
+  const y = (e.clientY - rect.top)   * (canvas.height / rect.height);
+  const btn = canvas._startBtn;
+  if (btn && x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) {
+    socket.emit('startGame');
+  }
+});
 
 requestAnimationFrame(loop);
