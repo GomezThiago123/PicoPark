@@ -64,6 +64,10 @@ socket.on('keyCollected', ({ playerName }) => {
   flash(`¡${playerName} recogió la llave!`, 2000);
 });
 
+socket.on('keyRespawned', () => {
+  flash('¡La llave reapareció!', 2500);
+});
+
 socket.on('levelComplete', ({ level }) => {
   const isLast = level >= 2;
   document.getElementById('overlayTitle').textContent    = `¡Nivel ${level} completado!`;
@@ -122,6 +126,33 @@ function drawPlatforms() {
     ctx.fillRect(p.x - p.w / 2, p.y - p.h / 2, p.w, 4);
   }
 }
+
+function drawBoxes(boxes) {
+  if (!boxes) return;
+  for (const b of boxes) {
+    const { x, y } = b;
+    const hw = BOX_W / 2, hh = BOX_H / 2;
+    // Sombra
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(x - hw + 3, y + hh, BOX_W, 5);
+    // Cuerpo
+    ctx.fillStyle = '#8B6318';
+    ctx.fillRect(x - hw, y - hh, BOX_W, BOX_H);
+    // Borde
+    ctx.strokeStyle = '#5a3d0a';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - hw, y - hh, BOX_W, BOX_H);
+    // Cruz de madera
+    ctx.strokeStyle = '#5a3d0a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - hw + 3, y - hh + 3); ctx.lineTo(x + hw - 3, y + hh - 3);
+    ctx.moveTo(x + hw - 3, y - hh + 3); ctx.lineTo(x - hw + 3, y + hh - 3);
+    ctx.stroke();
+  }
+}
+
+const BOX_W = 38, BOX_H = 38;
 
 function drawKey(key) {
   if (!key || key.collected) return;
@@ -184,36 +215,70 @@ function drawDoor(door, keyCollected) {
 function drawPlayer(p) {
   const { x, y, color, name, atDoor } = p;
   ctx.save();
+  ctx.imageSmoothingEnabled = false;
+
+  const dk = darken(color);
+  const lt = lighten(color);
+
   // Sombra
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  ctx.fillRect(x - 14, y + 18, 28, 6);
-  // Cuerpo
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(x - 12, y + 17, 30, 5);
+
+  // Cola (detrás del cuerpo)
   ctx.fillStyle = color;
-  ctx.fillRect(x - 16, y - 20, 32, 40);
-  // Borde superior claro
-  ctx.fillStyle = lighten(color);
-  ctx.fillRect(x - 16, y - 20, 32, 4);
-  // Ojos
+  ctx.fillRect(x + 14, y + 2,  12, 8);
+  ctx.fillRect(x + 18, y - 5,  8,  9);
+  ctx.strokeStyle = dk; ctx.lineWidth = 2;
+  ctx.strokeRect(x + 14, y + 2, 12, 8);
+  ctx.strokeRect(x + 18, y - 5, 8,  9);
+
+  // Cuerpo principal
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 14, y - 18, 28, 36);
+  ctx.strokeStyle = dk; ctx.lineWidth = 2;
+  ctx.strokeRect(x - 14, y - 18, 28, 36);
+
+  // Orejas
+  ctx.fillStyle = dk;
+  ctx.fillRect(x - 13, y - 30, 10, 14);
+  ctx.fillRect(x + 3,  y - 30, 10, 14);
+  // Interior de orejas
+  ctx.fillStyle = lt;
+  ctx.fillRect(x - 11, y - 28,  6, 9);
+  ctx.fillRect(x + 5,  y - 28,  6, 9);
+
+  // Ojos (negro + brillo)
+  ctx.fillStyle = '#111';
+  ctx.fillRect(x - 11, y - 13, 8, 7);
+  ctx.fillRect(x + 3,  y - 13, 8, 7);
   ctx.fillStyle = 'white';
-  ctx.fillRect(x - 10, y - 13, 8, 8);
-  ctx.fillRect(x + 2,  y - 13, 8, 8);
-  ctx.fillStyle = '#1a1a2e';
-  ctx.fillRect(x - 7,  y - 11, 4, 4);
-  ctx.fillRect(x + 5,  y - 11, 4, 4);
+  ctx.fillRect(x - 10, y - 12, 3, 3);
+  ctx.fillRect(x + 4,  y - 12, 3, 3);
+
+  // Nariz
+  ctx.fillStyle = dk;
+  ctx.fillRect(x - 3, y - 4, 6, 4);
+
+  // Boca (dos líneas)
+  ctx.fillRect(x - 5, y + 1, 3, 2);
+  ctx.fillRect(x + 2, y + 1, 3, 2);
+
   // Nombre
   ctx.fillStyle = 'white';
   ctx.font = 'bold 11px monospace';
   ctx.textAlign = 'center';
-  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)';
   ctx.shadowBlur  = 3;
-  ctx.fillText(name, x, y - 26);
+  ctx.fillText(name, x, y - 36);
   ctx.shadowBlur = 0;
-  // Checkmark al llegar a la puerta
+
+  // Checkmark en la puerta
   if (atDoor) {
     ctx.fillStyle = '#2ecc71';
-    ctx.font = '18px monospace';
-    ctx.fillText('✓', x, y - 38);
+    ctx.font = '16px monospace';
+    ctx.fillText('✓', x, y - 48);
   }
+
   ctx.restore();
 }
 
@@ -221,6 +286,13 @@ function lighten(hex) {
   const r = Math.min(255, parseInt(hex.slice(1,3), 16) + 60);
   const g = Math.min(255, parseInt(hex.slice(3,5), 16) + 60);
   const b = Math.min(255, parseInt(hex.slice(5,7), 16) + 60);
+  return `rgb(${r},${g},${b})`;
+}
+
+function darken(hex) {
+  const r = Math.max(0, parseInt(hex.slice(1,3), 16) - 55);
+  const g = Math.max(0, parseInt(hex.slice(3,5), 16) - 55);
+  const b = Math.max(0, parseInt(hex.slice(5,7), 16) - 55);
   return `rgb(${r},${g},${b})`;
 }
 
@@ -355,6 +427,7 @@ function loop(ts) {
       drawWaiting();
     } else {
       drawPlatforms();
+      drawBoxes(currentState.boxes);
       drawDoor(currentState.door, currentState.key.collected);
       drawKey(currentState.key);
       for (const p of Object.values(currentState.players)) drawPlayer(p);

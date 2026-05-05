@@ -30,13 +30,16 @@ const LOCAL_IP = getLocalIP();
 const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12'];
 const NAMES  = ['Rojo', 'Azul', 'Verde', 'Amarillo'];
 const PW = 32, PH = 40;
-const SPEED = 3.5;
+const SPEED      = 3.5;
 const JUMP_SPEED = 8;
-const FPS = 60;
+const FPS        = 60;
 
-// Capas de colisión: jugadores solo chocan con el mundo, no entre sí
+// Capas de colisión
 const CAT_WORLD  = 0x0002;
 const CAT_PLAYER = 0x0001;
+const CAT_BOX    = 0x0004;
+
+const BOX_W = 38, BOX_H = 38;
 
 const LEVELS = {
   1: {
@@ -47,6 +50,7 @@ const LEVELS = {
       { x: 500, y: 360, w: 160,  h: 20 },
       { x: 850, y: 300, w: 160,  h: 20 },
     ],
+    boxes:   [{ x: 380, y: 541 }, { x: 430, y: 541 }],
     keyPos:  { x: 850, y: 255 },
     doorPos: { x: 1130, y: 536 },
     spawns:  [{ x: 80, y: 525 }, { x: 135, y: 525 }, { x: 190, y: 525 }, { x: 245, y: 525 }],
@@ -57,9 +61,10 @@ const LEVELS = {
       { x: 600, y: 580, w: 1200, h: 40 },
       { x: 150, y: 480, w: 140,  h: 20 },
       { x: 430, y: 380, w: 140,  h: 20 },
-      { x: 600, y: 200, w: 160,  h: 20 },  // plataforma alta — requiere apilarse
+      { x: 600, y: 200, w: 160,  h: 20 },
       { x: 1000, y: 400, w: 160, h: 20 },
     ],
+    boxes:   [{ x: 340, y: 541 }, { x: 390, y: 541 }, { x: 440, y: 541 }],
     keyPos:  { x: 600, y: 150 },
     doorPos: { x: 1080, y: 358 },
     spawns:  [{ x: 80, y: 525 }, { x: 135, y: 525 }, { x: 190, y: 525 }, { x: 245, y: 525 }],
@@ -76,6 +81,7 @@ let keyState     = { x: 0, y: 0, collected: false, holder: null };
 let doorPos      = { x: 0, y: 0 };
 let currentLevel = 1;
 let gameStatus   = 'lobby'; // 'lobby' | 'playing' | 'complete'
+let boxBodies    = [];       // cuerpos físicos de las cajas del nivel actual
 
 function emitLobby() {
   io.emit('lobbyUpdate', {
@@ -92,8 +98,8 @@ function initLevel(num) {
   world  = engine.world;
 
   const lvl = LEVELS[num];
-  const worldFilter = { category: CAT_WORLD, mask: CAT_PLAYER };
-  const T = 60; // grosor de paredes invisibles
+  const worldFilter = { category: CAT_WORLD, mask: CAT_PLAYER | CAT_BOX };
+  const T = 60;
   const walls = [
     Bodies.rectangle(-T / 2,            lvl.height / 2, T, lvl.height, { isStatic: true, label: 'wall', collisionFilter: worldFilter }),
     Bodies.rectangle(lvl.width + T / 2, lvl.height / 2, T, lvl.height, { isStatic: true, label: 'wall', collisionFilter: worldFilter }),
@@ -105,6 +111,19 @@ function initLevel(num) {
     ),
     ...walls,
   ]);
+
+  // Crear cajas empujables
+  boxBodies = lvl.boxes.map((b, i) =>
+    Bodies.rectangle(b.x, b.y, BOX_W, BOX_H, {
+      label: `box_${i}`,
+      friction: 0.1,
+      frictionAir: 0.03,
+      restitution: 0.3,
+      density: 0.004,
+      collisionFilter: { category: CAT_BOX, mask: CAT_WORLD | CAT_PLAYER | CAT_BOX },
+    })
+  );
+  if (boxBodies.length) World.add(world, boxBodies);
 
   keyState  = { x: lvl.keyPos.x, y: lvl.keyPos.y, collected: false, holder: null };
   doorPos   = { x: lvl.doorPos.x, y: lvl.doorPos.y };
@@ -130,7 +149,7 @@ function makeBody(socketId, spawn) {
     restitution: 0,
     inertia: Infinity,
     inverseInertia: 0,
-    collisionFilter: { category: CAT_PLAYER, mask: CAT_WORLD },
+    collisionFilter: { category: CAT_PLAYER, mask: CAT_WORLD | CAT_BOX },
   });
 }
 
@@ -151,8 +170,8 @@ function addPlayer(socketId) {
 }
 
 function isOnGround(body) {
-  const footY    = body.position.y + PH / 2;
-  const footX    = body.position.x;
+  const footY     = body.position.y + PH / 2;
+  const footX     = body.position.x;
   const threshold = 4 + Math.abs(body.velocity.y);
 
   for (const b of world.bodies) {
@@ -163,8 +182,8 @@ function isOnGround(body) {
           footY >= min.y - threshold && footY <= min.y + threshold) return true;
     } else {
       // Pararse encima de otro jugador (Nivel 2)
-      const otherTop  = b.position.y - PH / 2;
-      const otherLeft = b.position.x - PW / 2;
+      const otherTop   = b.position.y - PH / 2;
+      const otherLeft  = b.position.x - PW / 2;
       const otherRight = b.position.x + PW / 2;
       if (footX > otherLeft && footX < otherRight && Math.abs(footY - otherTop) < threshold) return true;
     }
@@ -225,8 +244,22 @@ function tick() {
 
   Engine.update(engine, 1000 / FPS);
 
-  // Corrección de apilamiento: sin colisión física entre jugadores,
-  // se ajusta la posición para que puedan pararse encima sin atravesarse
+  // Respawn de llave si el portador cae al vacío
+  if (keyState.holder && players[keyState.holder]) {
+    const holder = players[keyState.holder];
+    if (holder.body.position.y > LEVELS[currentLevel].height + 80) {
+      const spawn = LEVELS[currentLevel].spawns[holder.index];
+      Body.setPosition(holder.body, { x: spawn.x, y: spawn.y });
+      Body.setVelocity(holder.body, { x: 0, y: 0 });
+      keyState.x         = LEVELS[currentLevel].keyPos.x;
+      keyState.y         = LEVELS[currentLevel].keyPos.y;
+      keyState.collected = false;
+      keyState.holder    = null;
+      io.emit('keyRespawned');
+    }
+  }
+
+  // Corrección de apilamiento (vertical)
   const pArr = Object.values(players);
   for (const pA of pArr) {
     const aFoot = pA.body.position.y + PH / 2;
@@ -237,6 +270,25 @@ function tick() {
       if (dx < PW - 4 && aFoot >= bHead - 8 && aFoot <= bHead + 14 && pA.body.velocity.y >= -0.5) {
         Body.setPosition(pA.body, { x: pA.body.position.x, y: bHead - PH / 2 });
         Body.setVelocity(pA.body, { x: pA.body.velocity.x, y: 0 });
+      }
+    }
+  }
+
+  // Separación horizontal: evita que los jugadores se atraviesen de costado
+  for (let i = 0; i < pArr.length; i++) {
+    for (let j = i + 1; j < pArr.length; j++) {
+      const pA = pArr[i], pB = pArr[j];
+      const dx = pA.body.position.x - pB.body.position.x;
+      const dy = pA.body.position.y - pB.body.position.y;
+      if (Math.abs(dx) < PW - 2 && Math.abs(dy) < PH - 6) {
+        const sep  = (PW - Math.abs(dx)) / 2 + 1;
+        const sign = dx >= 0 ? 1 : -1;
+        Body.setPosition(pA.body, { x: pA.body.position.x + sign * sep, y: pA.body.position.y });
+        Body.setPosition(pB.body, { x: pB.body.position.x - sign * sep, y: pB.body.position.y });
+        if (sign > 0 && pA.body.velocity.x < 0) Body.setVelocity(pA.body, { x: 0, y: pA.body.velocity.y });
+        if (sign > 0 && pB.body.velocity.x > 0) Body.setVelocity(pB.body, { x: 0, y: pB.body.velocity.y });
+        if (sign < 0 && pA.body.velocity.x > 0) Body.setVelocity(pA.body, { x: 0, y: pA.body.velocity.y });
+        if (sign < 0 && pB.body.velocity.x < 0) Body.setVelocity(pB.body, { x: 0, y: pB.body.velocity.y });
       }
     }
   }
@@ -255,6 +307,7 @@ function tick() {
     level:  currentLevel,
     key:    { x: keyState.x, y: keyState.y, collected: keyState.collected },
     door:   doorPos,
+    boxes:  boxBodies.map(b => ({ x: b.position.x, y: b.position.y })),
     players: {},
   };
   for (const id in players) {
