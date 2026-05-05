@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 
 interface Props {
   color: string;
@@ -7,22 +7,25 @@ interface Props {
 }
 
 export default function JumpButton({ color, onInput }: Props) {
+  const [pressed, setPressed] = useState(false);
+
   return (
-    <Pressable
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.btn,
         {
           backgroundColor: pressed ? color : color + 'BB',
           shadowColor: color,
+          borderColor: pressed ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.4)',
         },
       ]}
-      onPressIn={() => onInput(true)}
-      onPressOut={() => onInput(false)}
-      android_disableSound
+      onTouchStart={(e) => { e.stopPropagation(); setPressed(true);  onInput(true);  }}
+      onTouchEnd={(e)   => { e.stopPropagation(); setPressed(false); onInput(false); }}
+      onTouchCancel={(e)=> { e.stopPropagation(); setPressed(false); onInput(false); }}
     >
       <Text style={styles.label}>A</Text>
       <Text style={styles.sub}>SALTO</Text>
-    </Pressable>
+    </View>
   );
 }
 
@@ -34,7 +37,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.4)',
     elevation: 8,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.7,

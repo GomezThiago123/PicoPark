@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Pressable, StyleSheet, Text } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 
 interface Props {
   onInput: (key: 'left' | 'right', pressed: boolean) => void;
@@ -11,25 +11,27 @@ export default function DPad({ onInput }: Props) {
 
   return (
     <View style={styles.container}>
-      <Pressable
-        style={({ pressed }) => [styles.btn, styles.btnLeft, pressed && styles.pressed]}
-        onPressIn={() => left(true)}
-        onPressOut={() => left(false)}
-        android_disableSound
+      {/* Botón izquierda */}
+      <View
+        style={[styles.btn, styles.btnLeft]}
+        onTouchStart={(e) => { e.stopPropagation(); left(true); }}
+        onTouchEnd={(e)   => { e.stopPropagation(); left(false); }}
+        onTouchCancel={(e)=> { e.stopPropagation(); left(false); }}
       >
         <Text style={styles.arrow}>◄</Text>
-      </Pressable>
+      </View>
 
       <View style={styles.center} />
 
-      <Pressable
-        style={({ pressed }) => [styles.btn, styles.btnRight, pressed && styles.pressed]}
-        onPressIn={() => right(true)}
-        onPressOut={() => right(false)}
-        android_disableSound
+      {/* Botón derecha */}
+      <View
+        style={[styles.btn, styles.btnRight]}
+        onTouchStart={(e) => { e.stopPropagation(); right(true); }}
+        onTouchEnd={(e)   => { e.stopPropagation(); right(false); }}
+        onTouchCancel={(e)=> { e.stopPropagation(); right(false); }}
       >
         <Text style={styles.arrow}>►</Text>
-      </Pressable>
+      </View>
     </View>
   );
 }
@@ -55,11 +57,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  pressed: {
-    backgroundColor: 'rgba(255,255,255,0.35)',
-    borderColor: 'rgba(255,255,255,0.6)',
-  },
-  btnLeft:  { left: 0, top: (190 - BTN) / 2 },
+  btnLeft:  { left: 0,  top: (190 - BTN) / 2 },
   btnRight: { right: 0, top: (190 - BTN) / 2 },
   center: {
     width: 44,
