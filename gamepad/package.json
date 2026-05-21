@@ -6,7 +6,8 @@
     "start": "npx expo start",
     "android": "npx expo start --android",
     "ios": "npx expo start --ios",
-    "build:android": "eas build --platform android --profile preview"
+    "build:android": "eas build --platform android --profile preview",
+    "eas:android": "eas build -p android --profile preview"
   },
   "dependencies": {
     "expo": "~55.0.0",

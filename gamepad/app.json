@@ -13,7 +13,11 @@
       "adaptiveIcon": {
         "backgroundColor": "#1a1a2e"
       },
-      "package": "com.picopark.gamepad"
+      "package": "com.picopark.gamepad",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       [
@@ -22,6 +26,14 @@
           "cameraPermission": "La app necesita la cámara para escanear el código QR del juego."
         }
       ]
-    ]
+    ],
+    "ios": {
+      "bundleIdentifier": "com.picopark.gamepad"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1918880b-0ced-48e4-b519-c2d9c9739e62"
+      }
+    }
   }
 }
