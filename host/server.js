@@ -14,7 +14,7 @@ const io = new Server(httpServer, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 function getLocalIP() {
   for (const ifaces of Object.values(os.networkInterfaces())) {
