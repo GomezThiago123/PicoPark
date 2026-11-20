@@ -1,5 +1,7 @@
 # Pico Park — WebSockets
 
+[![CI](https://github.com/GomezThiago123/PicoPark/actions/workflows/ci.yml/badge.svg)](https://github.com/GomezThiago123/PicoPark/actions/workflows/ci.yml)
+
 Juego cooperativo multijugador inspirado en Pico Park. Servidor Node.js con motor de físicas y app móvil React Native como control inalámbrico.
 
 ## Estructura
@@ -109,6 +111,8 @@ docker compose -f deploy/docker-compose.yml up -d   # VM: descarga y ejecuta
 ```
 
 Convención de tags, autenticación y pasos completos: [docs/03-registro-imagenes.md](docs/03-registro-imagenes.md).
+
+Cada push a `main` también la publica automáticamente desde GitHub Actions: [docs/04-ci-github-actions.md](docs/04-ci-github-actions.md).
 
 ---
 

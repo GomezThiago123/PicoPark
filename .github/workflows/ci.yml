@@ -1,0 +1,145 @@
+# CI: verifica el código, construye la imagen del host, la prueba y la publica en GHCR.
+#
+#   push a main        -> sha-<commit> + latest
+#   push de tag vX.Y.Z -> sha-<commit> + X.Y.Z
+#   pull request       -> solo verifica y prueba, no publica
+#
+# Mismo esquema de tags que scripts/publicar-imagen.sh (ver docs/03-registro-imagenes.md).
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/gomezthiago123/picopark-host
+
+jobs:
+  host:
+    name: Host · instalar y verificar
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: host
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar sintaxis
+        run: |
+          node --check server.js
+          node --check public/game.js
+
+  gamepad:
+    name: Gamepad · chequeo de tipos
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gamepad
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gamepad/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci --ignore-scripts
+
+      - name: TypeScript (tsc --noEmit)
+        run: npx tsc --noEmit
+
+  imagen:
+    name: Imagen · build, prueba y publicación
+    needs: host
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Calcular tags y labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          # latest con prioridad baja para que la "version" de la imagen sea el sha o X.Y.Z
+          tags: |
+            type=sha
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}},priority=50
+
+      - name: Construir imagen
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test del contenedor
+        env:
+          IMAGE_REF: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+        run: |
+          docker run -d --name smoke -p 3000:3000 "$IMAGE_REF"
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null http://localhost:3000/ && break
+            sleep 1
+          done
+          # grep sin -q: lee toda la respuesta y no corta el pipe de curl (pipefail)
+          echo "--- lobby";     curl -sf http://localhost:3000/ | grep -F "<title>Pico Park</title>" > /dev/null
+          echo "--- socket.io"; curl -sf -o /dev/null http://localhost:3000/socket.io/socket.io.js
+          echo "--- QR";        curl -sf http://localhost:3000/qr | grep -F '"addr"' > /dev/null
+          echo "OK"
+
+      - name: Logs del contenedor
+        if: always()
+        run: docker logs smoke || true
+
+      - name: Login en GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Se publica exactamente la imagen que pasó el smoke test (no se reconstruye).
+      - name: Publicar en GHCR
+        if: github.event_name != 'pull_request'
+        run: docker push --all-tags "$IMAGE"
+
+      - name: Resumen
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Imagen publicada"
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
