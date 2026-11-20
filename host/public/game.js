@@ -9,6 +9,7 @@ let levelData    = null;
 let currentState = null;
 let serverInfo   = null;
 let qrImage      = null;
+let qrAddr       = null;
 let flashMsg     = null;
 let flashTimer   = 0;
 let playerCount  = 0;
@@ -24,7 +25,7 @@ socket.on('serverInfo', async (info) => {
     const data = await res.json();
     const img  = new Image();
     img.src    = data.qr;
-    img.onload = () => { qrImage = img; };
+    img.onload = () => { qrImage = img; if (data.addr) qrAddr = data.addr; };
   } catch (_) {}
 });
 
@@ -337,7 +338,7 @@ function drawLobby() {
   if (serverInfo) {
     ctx.fillStyle = '#aaa';
     ctx.font = '15px monospace';
-    ctx.fillText(`${serverInfo.ip}:${serverInfo.port}`, W / 2, qrY + qrSize + 26);
+    ctx.fillText(qrAddr || `${serverInfo.ip}:3050`, W / 2, qrY + qrSize + 26);
   }
 
   // Lista de jugadores
