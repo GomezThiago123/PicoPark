@@ -88,6 +88,10 @@ jobs:
             type=sha
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}},priority=50
+          # sin esto, metadata-action usa el nombre del repo y una descripción vacía
+          labels: |
+            org.opencontainers.image.title=picopark-host
+            org.opencontainers.image.description=Servidor host de Pico Park (Node.js + socket.io)
 
       - name: Construir imagen
         uses: docker/build-push-action@v7
