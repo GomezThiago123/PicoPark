@@ -25,7 +25,8 @@ function getLocalIP() {
   return '127.0.0.1';
 }
 
-const LOCAL_IP = getLocalIP();
+const LOCAL_IP = process.env.PUBLIC_IP || "10.56.31.44" || getLocalIP();
+const PUBLIC_PORT = process.env.PUBLIC_PORT || 3050;
 
 const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12'];
 const NAMES  = ['Rojo', 'Azul', 'Verde', 'Amarillo'];
@@ -414,7 +415,7 @@ io.on('connection', (socket) => {
 
 app.get('/qr', async (req, res) => {
   try {
-    const addr = `${LOCAL_IP}:${PORT}`;
+    const addr = `${LOCAL_IP}:${PUBLIC_PORT}`;
     const qr   = await QRCode.toDataURL(addr);
     res.json({ qr, ip: LOCAL_IP, port: PORT, addr });
   } catch (e) {
@@ -427,6 +428,6 @@ app.get('/qr', async (req, res) => {
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\nPicoPark corriendo:`);
   console.log(`  Local: http://localhost:${PORT}`);
-  console.log(`  LAN:   http://${LOCAL_IP}:${PORT}`);
-  console.log(`  Gamepad conectar a: ${LOCAL_IP}:${PORT}\n`);
+  console.log(`  LAN:   http://${LOCAL_IP}:${PUBLIC_PORT}`);
+  console.log(`  Gamepad conectar a: ${LOCAL_IP}:${PUBLIC_PORT}\n`);
 });

@@ -32,7 +32,7 @@ export default function ConnectionScreen({ onConnect }: Props) {
 
   const handleConnect = () => {
     const addr = ip.trim();
-    if (!addr) return Alert.alert('Error', 'Ingresá la dirección IP del servidor (ej: 192.168.1.10:3000)');
+    if (!addr) return Alert.alert('Error', 'Ingresá la dirección IP del servidor (ej: 10.56.31.44:3050)');
     onConnect(addr);
   };
 
@@ -65,7 +65,7 @@ export default function ConnectionScreen({ onConnect }: Props) {
 
       <TextInput
         style={styles.input}
-        placeholder="192.168.1.10:3000"
+        placeholder="10.56.31.44:3050"
         placeholderTextColor="#555"
         value={ip}
         onChangeText={setIp}
