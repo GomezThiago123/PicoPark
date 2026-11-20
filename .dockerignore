@@ -1,0 +1,5 @@
+# La imagen solo necesita host/. Lista blanca: todo lo demás queda afuera
+# (gamepad/ con sus node_modules pesa ~380 MB y no se usa).
+*
+!host/
+host/node_modules

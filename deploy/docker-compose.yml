@@ -1,0 +1,13 @@
+# Compose para la VM: usa la imagen publicada en GHCR, no construye nada.
+# Uso:  IMAGE_TAG=sha-xxxxxxx docker compose pull
+#       IMAGE_TAG=sha-xxxxxxx docker compose up -d
+# (o poné IMAGE_TAG=... en un archivo .env al lado de este)
+services:
+  picopark-host:
+    image: ghcr.io/gomezthiago123/picopark-host:${IMAGE_TAG:-latest}
+    container_name: picopark-host
+    ports:
+      - "${HOST_PORT:-3050}:3000"
+    environment:
+      - PORT=3000
+    restart: unless-stopped

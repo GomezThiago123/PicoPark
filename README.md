@@ -99,6 +99,19 @@ eas build --platform android --profile preview
 
 ---
 
+## Imagen Docker
+
+El host se publica en GitHub Container Registry como `ghcr.io/gomezthiago123/picopark-host`. La VM la descarga y la ejecuta sin reconstruirla:
+
+```bash
+scripts/publicar-imagen.sh                    # laptop: construye y publica
+docker compose -f deploy/docker-compose.yml up -d   # VM: descarga y ejecuta
+```
+
+Convención de tags, autenticación y pasos completos: [docs/03-registro-imagenes.md](docs/03-registro-imagenes.md).
+
+---
+
 ## Requisitos
 - Node.js 18+
 - Bun (recomendado) o npm
