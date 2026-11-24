@@ -112,7 +112,7 @@ docker compose -f deploy/docker-compose.yml up -d   # VM: descarga y ejecuta
 
 Convención de tags, autenticación y pasos completos: [docs/03-registro-imagenes.md](docs/03-registro-imagenes.md).
 
-Cada push a `main` también la publica automáticamente desde GitHub Actions: [docs/04-ci-github-actions.md](docs/04-ci-github-actions.md).
+Cada push a `main` también la publica automáticamente desde GitHub Actions ([docs/04-ci-github-actions.md](docs/04-ci-github-actions.md)) y la despliega en la VM con un runner self-hosted ([docs/05-cd-vm.md](docs/05-cd-vm.md)).
 
 ---
 

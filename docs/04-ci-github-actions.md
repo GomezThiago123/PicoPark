@@ -50,4 +50,4 @@ El paquete `picopark-host` se creó desde la laptop con un token personal, así 
 - El resumen de la ejecución lista los tags publicados.
 - En la página del paquete aparece el nuevo `sha-<commit>` del push, y `latest` apunta a esa imagen.
 
-Para desplegar esa imagen en la VM, se cambia `IMAGE_TAG` en `~/PicoPark/deploy/.env` y se corre `docker compose pull && docker compose up -d`. El módulo 05 automatiza ese paso.
+El despliegue de esa imagen en la VM lo hace automáticamente el job **Despliegue · VM**: ver [05-cd-vm.md](05-cd-vm.md).

@@ -1,8 +1,9 @@
-# CI: verifica el código, construye la imagen del host, la prueba y la publica en GHCR.
+# CI/CD: verifica el código, construye la imagen del host, la prueba, la publica
+# en GHCR y la despliega en la VM.
 #
-#   push a main        -> sha-<commit> + latest
-#   push de tag vX.Y.Z -> sha-<commit> + X.Y.Z
-#   pull request       -> solo verifica y prueba, no publica
+#   push a main        -> sha-<commit> + latest, y despliegue en la VM
+#   push de tag vX.Y.Z -> sha-<commit> + X.Y.Z (sin despliegue)
+#   pull request       -> solo verifica y prueba, no publica ni despliega
 #
 # Mismo esquema de tags que scripts/publicar-imagen.sh (ver docs/03-registro-imagenes.md).
 name: CI
@@ -73,6 +74,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -147,3 +150,29 @@ jobs:
             echo "$TAGS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # CD: corre en el runner self-hosted instalado en la VM (la VM está en una red
+  # privada, así que GitHub no puede entrar por SSH; el runner sale hacia GitHub).
+  desplegar:
+    name: Despliegue · VM
+    needs: imagen
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, picopark-vm]
+    environment:
+      name: produccion
+      url: http://10.56.31.44:3050
+    concurrency:
+      group: despliegue-vm
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Desplegar, verificar (y volver atrás si falla)
+        env:
+          TAG: ${{ needs.imagen.outputs.tag }}
+        run: deploy/desplegar.sh "$TAG"
+
+      - name: Resumen
+        env:
+          TAG: ${{ needs.imagen.outputs.tag }}
+        run: echo "### Desplegado \`$TAG\` en http://10.56.31.44:3050" >> "$GITHUB_STEP_SUMMARY"

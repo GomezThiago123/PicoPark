@@ -1,10 +1,13 @@
 # Compose para la VM: usa la imagen publicada en GHCR, no construye nada.
-# Uso:  IMAGE_TAG=sha-xxxxxxx docker compose pull
-#       IMAGE_TAG=sha-xxxxxxx docker compose up -d
-# (o poné IMAGE_TAG=... en un archivo .env al lado de este)
+#
+# Lo maneja deploy/desplegar.sh (CD), que lo copia a ~/picopark-deploy junto con
+# un .env que fija IMAGE_TAG. Para operar a mano en la VM:
+#   cd ~/picopark-deploy && docker compose ps
+name: picopark-host
+
 services:
   picopark-host:
-    image: ghcr.io/gomezthiago123/picopark-host:${IMAGE_TAG:-latest}
+    image: ghcr.io/gomezthiago123/picopark-host:${IMAGE_TAG:?definir IMAGE_TAG (sha-xxxxxxx o X.Y.Z)}
     container_name: picopark-host
     ports:
       - "${HOST_PORT:-3050}:3000"

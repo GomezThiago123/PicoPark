@@ -1,0 +1,39 @@
+# Despliegue manual de una versión ya publicada en GHCR.
+# Sirve para volver a una versión anterior (rollback) sin tocar el código.
+#
+# Actions -> "Desplegar versión" -> Run workflow -> tag (ej: sha-82bca35)
+name: Desplegar versión
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag de la imagen (sha-xxxxxxx o X.Y.Z)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  desplegar:
+    name: Despliegue · VM (manual)
+    runs-on: [self-hosted, picopark-vm]
+    environment:
+      name: produccion
+      url: http://10.56.31.44:3050
+    concurrency:
+      group: despliegue-vm
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Desplegar ${{ inputs.tag }}
+        env:
+          TAG: ${{ inputs.tag }}
+        run: deploy/desplegar.sh "$TAG"
+
+      - name: Resumen
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "### Desplegado \`$TAG\` (manual) en http://10.56.31.44:3050" >> "$GITHUB_STEP_SUMMARY"

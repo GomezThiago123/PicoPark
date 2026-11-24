@@ -63,6 +63,8 @@ El paquete queda en <https://github.com/users/GomezThiago123/packages/container/
 
 ## Descargar y ejecutar en la VM
 
+> Desde el módulo 05, este paso lo hace automáticamente el CD en `~/picopark-deploy` (ver [05-cd-vm.md](05-cd-vm.md)). Lo que sigue es el procedimiento manual original.
+
 La VM no construye nada: usa [`deploy/docker-compose.yml`](../deploy/docker-compose.yml), que solo tiene `image:` (sin `build:`).
 
 ```bash
