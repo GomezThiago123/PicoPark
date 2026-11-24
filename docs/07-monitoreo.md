@@ -56,7 +56,7 @@ El smoke test del CI (módulo 04) verifica que `/metrics` responda: una imagen s
 | **CPU usada** | Picos cortos | Más de 85 % sostenido: falta CPU y todo se vuelve lento |
 | **Memoria usada** | Estable | Cerca de 100 %: el kernel empieza a matar procesos. La caché no cuenta como usada. |
 | **Carga del sistema vs núcleos** | Las líneas de carga por debajo de la de núcleos | Carga por encima de los núcleos: hay procesos esperando CPU |
-| **Disco raíz** | Verde (menos de 70 %) | Amarillo desde 70 % y rojo desde 85 %. Lo que más crece son las imágenes de Docker de cada despliegue: `docker image prune -a`. |
+| **Disco raíz** | Verde (menos de 70 %) | Amarillo desde 70 % y rojo desde 85 %. Cada despliegue deja la versión anterior del juego en la VM. Para liberar espacio se borran **solo las imágenes propias** que ya no se usan: `docker image ls ghcr.io/gomezthiago123/picopark-host` y `docker image rm <imagen:tag>`. En una VM compartida **no** hay que usar `docker image prune -a`, porque borra también imágenes de otros proyectos. |
 | **Disco: lectura y escritura** | Picos durante despliegues (`docker pull`) | Escritura alta sostenida sin despliegues |
 | **Red de la VM** | Picos en despliegues y durante las partidas | Tráfico alto sin partidas ni despliegues |
 

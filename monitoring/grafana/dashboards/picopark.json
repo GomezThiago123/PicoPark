@@ -535,7 +535,7 @@
       "type": "stat",
       "id": 10,
       "title": "Disco raíz",
-      "description": "Espacio ocupado en / y espacio libre. Verde < 70%, amarillo < 85%, rojo desde 85% (alerta DiscoCasiLleno). Lo que más crece son las imágenes viejas de Docker: docker image prune.",
+      "description": "Espacio ocupado en / y espacio libre. Verde < 70%, amarillo < 85%, rojo desde 85% (alerta DiscoCasiLleno). La VM es compartida: liberar espacio borrando solo imágenes propias que ya no se usan.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
