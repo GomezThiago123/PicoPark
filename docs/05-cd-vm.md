@@ -115,6 +115,16 @@ Un runner self-hosted ejecuta el código del workflow en la VM, y el repo es pú
 - **Settings → Actions → General → Fork pull request workflows from outside collaborators → "Require approval for all external contributors"**. Así, un pull request desde un fork no ejecuta nada sin aprobación, ni siquiera si modifica el workflow para apuntar al runner.
 - El runner corre como usuario normal, sin root, y la VM no expone puertos nuevos.
 
+## Pruebas realizadas
+
+| # | Prueba | Resultado | Ejecución |
+|---|--------|-----------|-----------|
+| 1 | Push a `main` (commit `53fe98b`): CI completo + despliegue | ✓ La VM pasó de `sha-648930b` (despliegue manual del módulo 03) a `sha-53fe98b`, verificada | [run 45453191624](https://github.com/GomezThiago123/PicoPark/actions/runs/45453191624) |
+| 2 | Rollback manual con *Desplegar versión* a `sha-82bca35` | ✓ La VM volvió a la versión anterior en ~40 s, verificada | [run 45453966647](https://github.com/GomezThiago123/PicoPark/actions/runs/45453966647) |
+| 3 | Despliegue de una versión que no existe (`sha-0000000`) | ✓ Falla en *Descargando*, el job queda en rojo y **`sha-82bca35` sigue corriendo** (lobby HTTP 200) | [run 45454130051](https://github.com/GomezThiago123/PicoPark/actions/runs/45454130051) |
+| 4 | Push de este documento a `main` | El CD despliega la versión nueva sin intervención y la VM sale de `sha-82bca35` | Último run de *CI* en Actions |
+| 5 | Versión que arranca pero no responde (imagen con `exit 1`) | ✓ La verificación falla, el script vuelve solo a la versión anterior y la verifica (~70 s) | Probado en una copia aislada fuera de la VM |
+
 ## Evidencia
 
 1. Hacer un push a `main`.
