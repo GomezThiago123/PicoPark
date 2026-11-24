@@ -1,0 +1,12 @@
+apiVersion: 1
+
+# El dashboard vive en el repo (monitoring/grafana/dashboards) y se carga solo.
+# Los cambios hechos desde la interfaz no se guardan: se editan en el JSON.
+providers:
+  - name: picopark
+    folder: PicoPark
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

@@ -1,0 +1,40 @@
+# Reglas de alerta. No hay Alertmanager (no se envían avisos): las alertas activas
+# se ven en el dashboard de Grafana (panel "Alertas activas").
+groups:
+  - name: picopark
+    rules:
+      - alert: ServicioCaido
+        expr: up == 0
+        for: 1m
+        labels: { severidad: critica }
+        annotations:
+          resumen: "{{ $labels.job }} no responde hace más de 1 minuto"
+
+      - alert: CPUAlta
+        expr: 100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[2m]))) > 85
+        for: 5m
+        labels: { severidad: advertencia }
+        annotations:
+          resumen: "CPU de la VM por encima del 85% durante 5 minutos"
+
+      - alert: MemoriaAlta
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 90
+        for: 5m
+        labels: { severidad: advertencia }
+        annotations:
+          resumen: "Memoria de la VM por encima del 90% durante 5 minutos"
+
+      - alert: DiscoCasiLleno
+        expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 85
+        for: 10m
+        labels: { severidad: advertencia }
+        annotations:
+          resumen: "Disco raíz de la VM por encima del 85%"
+
+      # A 60 FPS cada tick tiene 16,7 ms. Si el p95 se pasa, el juego se traba.
+      - alert: LoopDelJuegoLento
+        expr: histogram_quantile(0.95, sum by (le) (rate(picopark_tick_duration_seconds_bucket[2m]))) > 0.0167
+        for: 2m
+        labels: { severidad: advertencia }
+        annotations:
+          resumen: "El p95 del tick de física supera los 16,7 ms (menos de 60 FPS)"

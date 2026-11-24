@@ -1,0 +1,41 @@
+# Despliega el stack de monitoreo (Prometheus, Node Exporter, cAdvisor, Grafana) en la VM.
+# Corre cuando cambia algo en monitoring/ o a mano (Actions -> Monitoreo -> Run workflow).
+name: Monitoreo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "monitoring/**"
+      - ".github/workflows/monitoreo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desplegar:
+    name: Monitoreo · VM
+    runs-on: [self-hosted, picopark-vm]
+    environment:
+      name: monitoreo
+      url: http://10.56.31.44:3060
+    concurrency:
+      group: monitoreo-vm
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Estado de la VM antes del despliegue
+        run: |
+          free -h
+          df -h /
+          docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Ports}}'
+
+      - name: Desplegar y verificar
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: monitoring/desplegar.sh
+
+      - name: Resumen
+        run: echo "### Grafana en http://10.56.31.44:3060 (dashboard *PicoPark · VM y contenedores*)" >> "$GITHUB_STEP_SUMMARY"

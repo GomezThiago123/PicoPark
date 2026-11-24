@@ -114,6 +114,10 @@ Convención de tags, autenticación y pasos completos: [docs/03-registro-imagene
 
 Cada push a `main` también la publica automáticamente desde GitHub Actions ([docs/04-ci-github-actions.md](docs/04-ci-github-actions.md)) y la despliega en la VM con un runner self-hosted ([docs/05-cd-vm.md](docs/05-cd-vm.md)).
 
+## Monitoreo
+
+Prometheus, Node Exporter, cAdvisor y Grafana observan la VM, los contenedores y el juego (`GET /metrics`). Dashboard en `http://10.56.31.44:3060`. Qué se mide y cómo se interpreta: [docs/07-monitoreo.md](docs/07-monitoreo.md).
+
 ---
 
 ## Requisitos

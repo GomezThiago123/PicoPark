@@ -5,6 +5,7 @@ const Matter = require('matter-js');
 const path = require('path');
 const os = require('os');
 const QRCode = require('qrcode');
+const promClient = require('prom-client');
 
 const { Engine, World, Bodies, Body } = Matter;
 
@@ -83,6 +84,62 @@ let doorPos      = { x: 0, y: 0 };
 let currentLevel = 1;
 let gameStatus   = 'lobby'; // 'lobby' | 'playing' | 'complete'
 let boxBodies    = [];       // cuerpos físicos de las cajas del nivel actual
+
+// ─── Métricas (Prometheus) ────────────────────────────────────────────────
+// Se exponen en GET /metrics. Ver docs/07-monitoreo.md.
+
+promClient.collectDefaultMetrics(); // CPU, memoria, heap y event loop del proceso Node
+
+// gameStatus interno -> valor de la etiqueta "estado" en las métricas
+const ESTADOS_PARTIDA = { lobby: 'lobby', playing: 'jugando', complete: 'nivel completo' };
+
+new promClient.Gauge({
+  name: 'picopark_players',
+  help: 'Jugadores conectados, por estado (lobby o jugando)',
+  labelNames: ['estado'],
+  collect() {
+    this.set({ estado: 'lobby' },   Object.keys(lobbyPlayers).length);
+    this.set({ estado: 'jugando' }, Object.keys(players).length);
+  },
+});
+
+new promClient.Gauge({
+  name: 'picopark_socket_connections',
+  help: 'Conexiones WebSocket abiertas (host + gamepads)',
+  collect() { this.set(io.engine.clientsCount); },
+});
+
+new promClient.Gauge({
+  name: 'picopark_game_status',
+  help: 'Estado de la partida: 1 en el estado actual, 0 en los demás',
+  labelNames: ['estado'],
+  collect() {
+    for (const [s, estado] of Object.entries(ESTADOS_PARTIDA)) this.set({ estado }, gameStatus === s ? 1 : 0);
+  },
+});
+
+new promClient.Gauge({
+  name: 'picopark_level',
+  help: 'Nivel actual',
+  collect() { this.set(currentLevel); },
+});
+
+// El loop corre a 60 FPS: cada tick tiene 16,7 ms de presupuesto.
+const tickDuration = new promClient.Histogram({
+  name: 'picopark_tick_duration_seconds',
+  help: 'Duración de cada tick del loop de física (solo durante la partida)',
+  buckets: [0.0005, 0.001, 0.002, 0.004, 0.008, 0.0167, 0.033, 0.066],
+});
+
+const inputsTotal = new promClient.Counter({
+  name: 'picopark_inputs_total',
+  help: 'Inputs recibidos de los gamepads',
+});
+
+const levelsCompleted = new promClient.Counter({
+  name: 'picopark_levels_completed_total',
+  help: 'Niveles completados',
+});
 
 function emitLobby() {
   io.emit('lobbyUpdate', {
@@ -298,6 +355,7 @@ function tick() {
   const pList = Object.values(players);
   if (pList.length === 4 && keyState.collected && pList.every(p => p.atDoor)) {
     gameStatus = 'complete';
+    levelsCompleted.inc();
     io.emit('levelComplete', { level: currentLevel });
     return;
   }
@@ -325,7 +383,12 @@ function tick() {
   io.emit('gameState', state);
 }
 
-setInterval(tick, 1000 / FPS);
+setInterval(() => {
+  if (gameStatus !== 'playing') return tick();
+  const end = tickDuration.startTimer();
+  tick();
+  end();
+}, 1000 / FPS);
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────
 
@@ -377,6 +440,7 @@ io.on('connection', (socket) => {
   socket.on('input', ({ key, pressed }) => {
     const p = players[socket.id];
     if (!p) return;
+    inputsTotal.inc();
     if (key === 'left')       p.inputs.left  = pressed;
     else if (key === 'right') p.inputs.right = pressed;
     else if (key === 'jump' && pressed) {
@@ -421,6 +485,13 @@ app.get('/qr', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ─── Endpoint de métricas ────────────────────────────────────────────────
+
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', promClient.register.contentType);
+  res.end(await promClient.register.metrics());
 });
 
 // ─── Inicio ────────────────────────────────────────────────────────────────

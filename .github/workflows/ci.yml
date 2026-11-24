@@ -120,6 +120,7 @@ jobs:
           echo "--- lobby";     curl -sf http://localhost:3000/ | grep -F "<title>Pico Park</title>" > /dev/null
           echo "--- socket.io"; curl -sf -o /dev/null http://localhost:3000/socket.io/socket.io.js
           echo "--- QR";        curl -sf http://localhost:3000/qr | grep -F '"addr"' > /dev/null
+          echo "--- métricas";  curl -sf http://localhost:3000/metrics | grep -F 'picopark_players{estado="jugando"}' > /dev/null
           echo "OK"
 
       - name: Logs del contenedor

@@ -25,7 +25,7 @@ gamepad
 3. **imagen — build, prueba y publicación** (solo si `host` pasó):
    1. `docker/metadata-action` calcula los tags y los labels OCI (commit, fecha, repo).
    2. Construye la imagen con caché de GitHub Actions.
-   3. **Smoke test**: levanta el contenedor y verifica que respondan el lobby (`/`), el cliente de socket.io y el endpoint del QR (`/qr`).
+   3. **Smoke test**: levanta el contenedor y verifica que respondan el lobby (`/`), el cliente de socket.io, el endpoint del QR (`/qr`) y las métricas (`/metrics`, ver módulo 07).
    4. Login en GHCR con el `GITHUB_TOKEN` del workflow y `docker push` de **la misma imagen que pasó la prueba**, sin reconstruirla.
 
 ## Tests
