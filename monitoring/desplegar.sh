@@ -12,8 +12,9 @@ set -euo pipefail
 DIR="${MONITOREO_DIR:-$HOME/picopark-monitoreo}"
 GRAFANA_PORT="${GRAFANA_PORT:-3060}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROM="http://127.0.0.1:9090"
+PROM="http://127.0.0.1:19090"
 GRAFANA="http://127.0.0.1:$GRAFANA_PORT"
+PUERTOS="19090 19100 18081 $GRAFANA_PORT"          # ver monitoring/docker-compose.yml
 OBLIGATORIOS="prometheus node-exporter cadvisor"   # el juego se informa pero no bloquea
 
 log() { echo "==> $*"; }
@@ -24,10 +25,11 @@ if [[ "$GRAFANA_ADMIN_PASSWORD" == *"'"* || "$GRAFANA_ADMIN_PASSWORD" == *$'\n'*
   exit 2
 fi
 
-# Valor de la primera serie de una consulta instantánea a Prometheus (o vacío).
+# Valor de la primera serie de una consulta instantánea a Prometheus, o vacío si no hay.
+# Nunca falla: con "set -e" una consulta sin resultados cortaría el script.
 consulta() {
   curl -sfG "$PROM/api/v1/query" --data-urlencode "query=$1" \
-    | grep -o '"value":\[[^]]*\]' | head -1 | sed -E 's/.*,"([^"]*)"\]/\1/'
+    | grep -o '"value":\[[^]]*\]' | head -1 | sed -E 's/.*,"([^"]*)"\]/\1/' || true
 }
 
 # 1. Copiar configuración a la carpeta estable de la VM.
@@ -38,13 +40,28 @@ rm -rf prometheus grafana
 cp -r "$SRC/prometheus" "$SRC/grafana" "$SRC/docker-compose.yml" .
 (umask 077; printf "GRAFANA_ADMIN_PASSWORD='%s'\nGRAFANA_PORT=%s\n" "$GRAFANA_ADMIN_PASSWORD" "$GRAFANA_PORT" > .env)
 
-# 2. Descargar imágenes y (re)crear los contenedores con la configuración nueva.
+# 2. Descargar imágenes antes de bajar nada.
 log "Descargando imágenes"
 docker compose pull --quiet
-log "Levantando el stack"
-docker compose up -d --force-recreate --remove-orphans
 
-# 3. Verificar.
+# 3. Bajar la versión anterior (los datos quedan en los volúmenes) y comprobar que
+#    los puertos estén libres: la VM es compartida y otro servicio podría estar usándolos.
+log "Bajando la versión anterior del monitoreo"
+docker compose down --remove-orphans
+ocupados=""
+for p in $PUERTOS; do
+  if ss -ltnH "sport = :$p" | grep -q .; then ocupados="$ocupados $p"; fi
+done
+if [[ -n "$ocupados" ]]; then
+  echo "::error::Puertos ocupados por otro servicio de la VM:$ocupados. Cambiarlos en monitoring/."
+  for p in $ocupados; do ss -ltnH "sport = :$p"; done
+  exit 1
+fi
+
+log "Levantando el stack"
+docker compose up -d
+
+# 4. Verificar.
 log "Esperando a Prometheus"
 for _ in $(seq 1 30); do curl -sf -o /dev/null "$PROM/-/ready" && break; sleep 2; done
 curl -sf -o /dev/null "$PROM/-/ready" || { echo "::error::Prometheus no arrancó"; docker compose logs --tail 30 prometheus; exit 1; }

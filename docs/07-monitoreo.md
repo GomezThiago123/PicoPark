@@ -6,11 +6,11 @@ Dashboard: **http://10.56.31.44:3060** → *PicoPark · VM y contenedores*. Es l
 
 ```
 VM 10.56.31.44
- ├─ Node Exporter  127.0.0.1:9100 ─┐   CPU, memoria, disco y red de la VM
- ├─ cAdvisor       127.0.0.1:8081 ─┤   CPU, memoria, red y reinicios de cada contenedor
- ├─ picopark-host  :3050/metrics  ─┤   jugadores, loop del juego, event loop de Node
- │                                  ▼
- ├─ Prometheus     127.0.0.1:9090      lee cada 15 s, guarda 15 días (máx. 1 GB), evalúa alertas
+ ├─ Node Exporter  127.0.0.1:19100 ─┐   CPU, memoria, disco y red de la VM
+ ├─ cAdvisor       127.0.0.1:18081 ─┤   CPU, memoria, red y reinicios de cada contenedor
+ ├─ picopark-host  :3050/metrics   ─┤   jugadores, loop del juego, event loop de Node
+ │                                   ▼
+ ├─ Prometheus     127.0.0.1:19090      lee cada 15 s, guarda 15 días (máx. 500 MB), evalúa alertas
  │                                  ▼
  └─ Grafana        :3060 (red)         dashboard; es lo único accesible desde la red
 ```
@@ -64,8 +64,8 @@ El smoke test del CI (módulo 04) verifica que `/metrics` responda: una imagen s
 
 | Panel | Cómo leerlo |
 |---|---|
-| **CPU por contenedor** | 100 % equivale a un núcleo entero. Sirve para ver qué contenedor consume la CPU que muestra el panel de la VM. |
-| **Memoria por contenedor** | Memoria en uso que no se puede liberar. Una línea que **solo sube** y nunca baja sugiere una pérdida de memoria. |
+| **CPU por contenedor** | 100 % equivale a un núcleo entero. Sirve para ver qué contenedor consume la CPU que muestra el panel de la VM. Como la VM es compartida, se muestran los 8 que más usan. |
+| **Memoria por contenedor** | Memoria en uso que no se puede liberar. Una línea que **solo sube** y nunca baja sugiere una pérdida de memoria. Se muestran los 8 que más usan. |
 | **Red por contenedor** | Tráfico de cada contenedor. El del juego sube durante las partidas: el servidor manda el estado 60 veces por segundo. |
 | **Tiempo desde el último inicio** | Si un contenedor muestra pocos segundos o minutos y no hubo despliegue, **se cayó y Docker lo reinició**. Es la forma de detectar caídas cortas que no llegan a disparar una alerta. |
 
@@ -109,7 +109,9 @@ El estado *pending* indica que la condición se cumple pero todavía no pasó el
 **Red del host y puertos.** Los cuatro servicios usan `network_mode: host`, que es lo que necesita Node Exporter para ver la red real de la VM:
 
 - Prometheus, Node Exporter y cAdvisor escuchan solo en `127.0.0.1`. No son accesibles desde la red.
-- Grafana escucha en el puerto **3060**. El 3000 ya está ocupado en la VM por otro contenedor (`picopark-grafana`).
+- Grafana escucha en el puerto **3060**.
+
+**La VM es compartida.** Corren unos 17 contenedores de varios proyectos, y otro proyecto ya tiene su propio Prometheus, Node Exporter y Grafana en los puertos estándar (9090, 9100 y 3003). Por eso nuestro stack usa **19090, 19100 y 18081** y no toca nada de los demás. El primer despliegue falló justamente por ese choque de puertos. Desde entonces, el script baja nuestra versión anterior, **comprueba que los puertos estén libres** antes de levantar nada y, si alguno está ocupado, falla diciendo cuál y quién lo usa. cAdvisor observa todos los contenedores de la VM: sirve para ver si el juego anda lento porque otro proyecto está usando la CPU o la memoria.
 
 **Despliegue automático.** El workflow [`Monitoreo`](../.github/workflows/monitoreo.yml) corre en el runner de la VM cada vez que cambia algo en `monitoring/`, o a mano con *Run workflow*. Ejecuta [`monitoring/desplegar.sh`](../monitoring/desplegar.sh), que:
 
@@ -119,7 +121,7 @@ El estado *pending* indica que la condición se cumple pero todavía no pasó el
 4. Verifica que Prometheus lea Node Exporter, cAdvisor y a sí mismo (si alguno falla, el job queda en rojo) y que haya métricas de contenedores.
 5. Verifica que Grafana esté sana y que el dashboard esté cargado. El estado del juego se informa pero no bloquea.
 
-**Datos persistentes.** Prometheus y Grafana guardan sus datos en volúmenes de Docker (`prometheus-data`, `grafana-data`). Sobreviven a reinicios y redespliegues.
+**Datos persistentes.** Prometheus y Grafana guardan sus datos en volúmenes de Docker (`prometheus-data`, `grafana-data`). Sobreviven a reinicios y redespliegues. Prometheus tiene un límite de 500 MB porque el disco de la VM está casi lleno (87 % al instalar el monitoreo).
 
 **Dashboard como código.** El dashboard es [`monitoring/grafana/dashboards/picopark.json`](../monitoring/grafana/dashboards/picopark.json) y se carga solo. No se puede modificar desde la interfaz: los cambios se hacen en el archivo y se despliegan con un push.
 
@@ -129,7 +131,7 @@ El estado *pending* indica que la condición se cumple pero todavía no pasó el
 |---|---|
 | Usuario de Grafana | `admin` |
 | Contraseña de Grafana | Secreto `GRAFANA_ADMIN_PASSWORD` del repo (Settings → Secrets and variables → Actions) y `~/picopark-monitoreo/.env` en la VM |
-| Prometheus (diagnóstico) | No está expuesto. Hay que abrir un túnel desde la laptop: `ssh -L 9090:127.0.0.1:9090 Thiago@10.56.31.44` y entrar a http://localhost:9090 |
+| Prometheus (diagnóstico) | No está expuesto. Hay que abrir un túnel desde la laptop: `ssh -L 19090:127.0.0.1:19090 Thiago@10.56.31.44` y entrar a http://localhost:19090 |
 
 Grafana toma la contraseña **solo la primera vez que arranca**. Para cambiarla después, cambiala desde Grafana (Perfil → Cambiar contraseña) y actualizá también el secreto del repo, que el workflow usa para verificar el dashboard.
 

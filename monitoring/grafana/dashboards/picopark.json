@@ -792,8 +792,8 @@
     {
       "type": "timeseries",
       "id": 14,
-      "title": "CPU por contenedor",
-      "description": "Porcentaje de un núcleo que usa cada contenedor (100% = un núcleo entero).",
+      "title": "CPU por contenedor (los 8 que más usan)",
+      "description": "Porcentaje de un núcleo que usa cada contenedor (100% = un núcleo entero). La VM es compartida: se muestran los 8 contenedores que más CPU usan en cada momento.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -811,7 +811,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[$__rate_interval])) * 100",
+          "expr": "topk(8, sum by (name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[$__rate_interval])) * 100)",
           "legendFormat": "{{name}}"
         }
       ],
@@ -852,8 +852,8 @@
     {
       "type": "timeseries",
       "id": 15,
-      "title": "Memoria por contenedor",
-      "description": "Working set: memoria que el contenedor está usando y no se puede liberar. Una línea que solo sube puede ser una pérdida de memoria.",
+      "title": "Memoria por contenedor (los 8 que más usan)",
+      "description": "Working set: memoria que el contenedor está usando y no se puede liberar. Una línea que solo sube puede ser una pérdida de memoria. Se muestran los 8 que más usan.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -871,7 +871,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (name) (container_memory_working_set_bytes{name!=\"\"})",
+          "expr": "topk(8, sum by (name) (container_memory_working_set_bytes{name!=\"\"}))",
           "legendFormat": "{{name}}"
         }
       ],
@@ -912,7 +912,7 @@
     {
       "type": "timeseries",
       "id": 16,
-      "title": "Red por contenedor",
+      "title": "Red por contenedor (los 8 con más tráfico)",
       "description": "Bytes por segundo recibidos + enviados por cada contenedor. Los del monitoreo usan la red del host y no se muestran para no duplicar el tráfico de la VM.",
       "datasource": {
         "type": "prometheus",
@@ -931,7 +931,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (name) (rate(container_network_receive_bytes_total{name!=\"\", name!~\"monitoreo-.*\"}[$__rate_interval]) + rate(container_network_transmit_bytes_total{name!=\"\", name!~\"monitoreo-.*\"}[$__rate_interval]))",
+          "expr": "topk(8, sum by (name) (rate(container_network_receive_bytes_total{name!=\"\", name!~\"monitoreo-.*\"}[$__rate_interval]) + rate(container_network_transmit_bytes_total{name!=\"\", name!~\"monitoreo-.*\"}[$__rate_interval])))",
           "legendFormat": "{{name}}"
         }
       ],

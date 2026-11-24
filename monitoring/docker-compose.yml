@@ -5,6 +5,9 @@
 #
 # Todos usan la red del host. Prometheus, Node Exporter y cAdvisor escuchan solo en
 # 127.0.0.1: desde la red únicamente se llega a Grafana, que pide usuario y contraseña.
+#
+# La VM es compartida y otros proyectos ya usan 9090/9100 (los puertos estándar),
+# por eso acá se usan 19090 (Prometheus), 19100 (Node Exporter) y 18081 (cAdvisor).
 name: picopark-monitoreo
 
 services:
@@ -16,8 +19,8 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
-      - --storage.tsdb.retention.size=1GB
-      - --web.listen-address=127.0.0.1:9090
+      - --storage.tsdb.retention.size=500MB
+      - --web.listen-address=127.0.0.1:19090
     volumes:
       - ./prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
@@ -31,7 +34,7 @@ services:
     pid: host
     command:
       - --path.rootfs=/host
-      - --web.listen-address=127.0.0.1:9100
+      - --web.listen-address=127.0.0.1:19100
     volumes:
       - /:/host:ro,rslave
     restart: unless-stopped
@@ -46,7 +49,7 @@ services:
       - /dev/kmsg
     command:
       - -listen_ip=127.0.0.1
-      - -port=8081
+      - -port=18081
       - -docker_only=true
       - -housekeeping_interval=15s
       - -store_container_labels=false
